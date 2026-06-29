@@ -18,6 +18,7 @@ from quantaalpha_crypto.evaluation.walk_forward import (
     build_walk_forward_windows,
     evaluate_walk_forward,
 )
+from quantaalpha_crypto.mining._utils import _progress
 from quantaalpha_crypto.mining.workspace import CryptoFactorWorkspace
 
 
@@ -197,11 +198,6 @@ def run_supplied_factor_callables(
             )
 
     return BatchFactorRunResult(factors=results)
-
-
-def _progress(progress_callback: Callable[[str], None] | None, message: str) -> None:
-    if progress_callback is not None:
-        progress_callback(message)
 
 
 def _grid_with_timing(

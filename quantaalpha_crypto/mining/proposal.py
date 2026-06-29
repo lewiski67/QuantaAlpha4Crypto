@@ -9,6 +9,7 @@ from typing import Any, Callable, Protocol
 from quantaalpha_crypto.evaluation.factor import FactorCallable
 from quantaalpha_crypto.evaluation.grid import EvaluationGridItem, PnlPanelInput
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
+from quantaalpha_crypto.mining._utils import _progress, _redact_secrets
 from quantaalpha_crypto.mining.batch_runner import (
     BatchFactorResult,
     BatchFactorRunResult,
@@ -293,11 +294,6 @@ def run_factor_proposal_provider_with_repair(
     return BatchFactorRunResult(factors=results)
 
 
-def _progress(progress_callback: Callable[[str], None] | None, message: str) -> None:
-    if progress_callback is not None:
-        progress_callback(message)
-
-
 def _record_proposal_run(
     workspace: CryptoFactorWorkspace,
     proposal: FactorProposalResult,
@@ -459,31 +455,6 @@ def _persist_factor_artifacts(
             file.write("\n")
         references[id(candidate)] = reference
     return references
-
-
-def _redact_secrets(value: Any) -> Any:
-    sensitive_key_pattern = re.compile(
-        r"(api[_-]?key|secret|token|password|authorization)",
-        re.IGNORECASE,
-    )
-    if isinstance(value, dict):
-        return {
-            key: (
-                "[REDACTED]"
-                if sensitive_key_pattern.search(str(key))
-                else _redact_secrets(item)
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_secrets(item) for item in value]
-    if isinstance(value, str):
-        return re.sub(
-            r'(?i)("?(?:api[_-]?key|secret|token|password|authorization)"?\s*[:=]\s*)(".*?"|[^,\s}]+)',
-            r"\1[REDACTED]",
-            value,
-        )
-    return value
 
 
 def _artifact_reference(workspace: CryptoFactorWorkspace, factor_name: str) -> str:

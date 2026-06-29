@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from quantaalpha_crypto.evaluation.grid import EvaluationGridItem, PnlPanelInput
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
+from quantaalpha_crypto.mining._utils import _progress, _redact_secrets
 from quantaalpha_crypto.mining.batch_runner import BatchFactorRunResult
 from quantaalpha_crypto.mining.proposal import (
     FactorProposalProvider,
@@ -86,11 +86,6 @@ def run_local_crypto_mining_round(
     _record_mining_round(workspace, batch_result)
     _progress(progress_callback, "mining_round_recorded")
     return CryptoMiningRoundResult(workspace=workspace, batch_result=batch_result)
-
-
-def _progress(progress_callback: Callable[[str], None] | None, message: str) -> None:
-    if progress_callback is not None:
-        progress_callback(message)
 
 
 def _record_mining_round(
@@ -256,26 +251,3 @@ def _portfolio_feedback_item(
     }
 
 
-def _redact_secrets(value: Any) -> Any:
-    sensitive_key_pattern = re.compile(
-        r"(api[_-]?key|secret|token|password|authorization)",
-        re.IGNORECASE,
-    )
-    if isinstance(value, dict):
-        return {
-            key: (
-                "[REDACTED]"
-                if sensitive_key_pattern.search(str(key))
-                else _redact_secrets(item)
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_secrets(item) for item in value]
-    if isinstance(value, str):
-        return re.sub(
-            r'(?i)("?(?:api[_-]?key|secret|token|password|authorization)"?\s*[:=]\s*)(".*?"|[^,\s}]+)',
-            r"\1[REDACTED]",
-            value,
-        )
-    return value
