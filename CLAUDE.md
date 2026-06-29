@@ -54,6 +54,8 @@ python -m quantaalpha_crypto.mining.cli --config configs/crypto_original_flow_sm
 
 ## Working conventions
 
+- Current task state, next steps, and open decisions live in `docs/HANDOFF.md`.
+  Read it at the start of a session; update it at meaningful checkpoints.
 - Default branch is `main`. The crypto migration already lives here.
 - `old/` and `/artifacts/` are gitignored — never re-add them or import from `old/`.
 - Packaging is `quantaalpha-crypto` (`pyproject.toml`), entry point
