@@ -1,0 +1,40 @@
+{
+  "output_dir": "artifacts/crypto_real_smoke",
+  "run_id": "manual_real_smoke_15m_long_202401_202606",
+  "data_adapter": {
+    "data_path": "/home/lewiski/crypto_data",
+    "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+    "frequency": "1m",
+    "source_format": "binance_spot_candles_jsonl",
+    "product_type": "spot",
+    "dependency_name": "binance_spot_jsonl_1m",
+    "start_time": "2024-01-01 00:00:00",
+    "end_time": "2026-06-17 23:59:00"
+  },
+  "provider": "anthropic",
+  "repair_provider": "anthropic",
+  "model": "claude-opus-4-8",
+  "anthropic_effort": "max",
+  "anthropic_max_tokens": 64000,
+  "research_direction": "Mine Binance spot short-horizon factors that test liquidity-shock reversal and taker-flow imbalance. Focus on whether abnormal aggressive buy/sell pressure, quote volume surges, trade-count acceleration, and intrabar range expansion predict 15-minute continuation or reversal across BTCUSDT, ETHUSDT, and SOLUSDT. Avoid generic price-only momentum unless it is explicitly conditioned on liquidity shock or taker-flow imbalance.",
+  "candidate_horizons": ["15min"],
+  "candidate_horizon": "15min",
+  "evaluation_grid": [
+    {
+      "action": "spot_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "15min",
+      "leverage": 1.0
+    }
+  ],
+  "walk_forward_settings": {
+    "train_window": "180d",
+    "validation_window": "30d",
+    "test_window": "30d",
+    "step": "30d"
+  },
+  "input_lookback_window": "4h",
+  "update_frequency": "15min",
+  "rebalance_frequency": "1h",
+  "max_repair_attempts": 1
+}

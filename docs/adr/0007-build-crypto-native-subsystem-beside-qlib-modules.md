@@ -1,0 +1,7 @@
+# Build a crypto-native subsystem beside Qlib modules
+
+The first-stage refactor will add a `quantaalpha/crypto/` subsystem beside the existing Qlib-oriented modules instead of rewriting them in place. The subsystem is split into `quantaalpha/crypto/evaluation/` for crypto data loading, panel building, directional factor evaluation, Binance cost modeling, walk-forward reporting, gates, and candidate library persistence, and `quantaalpha/crypto/mining/` for automation around mining runs.
+
+This does not mean the original QuantaAlpha code is reference-only. The project target is crypto trading on Binance, so original modules should be reused directly, adapted in place, or migrated into the crypto path whenever their assumptions still fit. New crypto-native code is preferred only where Qlib daily equity assumptions would create a fragile compatibility layer for crypto spot/perpetual trading, intraday horizons, Binance costs, or research artifact auditability.
+
+The long-term migration strategy is Progressive In-place Replacement. The `quantaalpha/crypto/` subsystem is a temporary safety boundary for building and testing crypto-correct internals without destabilizing the original architecture. As each crypto path matures, prefer folding it back into the original architecture shape, entry points, pipeline concepts, and UI surfaces instead of maintaining a permanently separate product path.

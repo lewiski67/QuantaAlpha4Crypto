@@ -96,6 +96,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # ---- Legacy / deprecated directories ----
+old/
+/artifacts/
 alphaagent.egg-info/
 quantaalpha.egg-info/
 git_ignore_folder/

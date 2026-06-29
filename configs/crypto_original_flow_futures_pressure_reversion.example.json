@@ -1,0 +1,84 @@
+{
+  "output_dir": "artifacts/crypto_real_smoke",
+  "run_id": "manual_real_futures_pressure_reversion_15m_1h_202401_202606",
+  "data_adapter": {
+    "data_path": "/home/lewiski/crypto_data",
+    "symbols": ["BTCUSDT", "SOLUSDT"],
+    "frequency": "1m",
+    "source_format": "binance_futures_jsonl",
+    "product_type": "futures",
+    "dependency_name": "binance_futures_jsonl_1m_mark_premium_funding",
+    "start_time": "2024-01-01 00:00:00",
+    "end_time": "2026-06-16 23:59:00"
+  },
+  "provider": "anthropic",
+  "repair_provider": "anthropic",
+  "model": "claude-opus-4-8",
+  "anthropic_effort": "max",
+  "anthropic_thinking": null,
+  "anthropic_max_tokens": 12000,
+  "anthropic_timeout_seconds": 900,
+  "research_direction": "Mine Binance USD-M futures short-horizon factors for BTCUSDT and SOLUSDT using 1m futures OHLCV, quote_volume, trade_count, taker_buy_base_volume, taker_buy_quote_volume, premium_close, mark_close, and funding_rate. Focus on whether crowded perpetual pressure, measured by positive or negative premium-index extremes, mark-vs-last-price divergence, recent funding-rate pressure, and abnormal taker-buy imbalance after short-term price extension, predicts 15-minute to 1-hour mean reversion rather than continuation on BTCUSDT and SOLUSDT separately and jointly. Other liquid USDT perpetual contracts may be used later as cross-asset context features, but the tradable/evaluated outputs must remain BTCUSDT and SOLUSDT only unless the config explicitly separates feature_universe from tradable_universe. Prefer factors that normalize premium, funding, and taker imbalance by symbol-specific rolling 1-day to 7-day distributions and condition on liquidity/volatility regimes. Avoid raw price-only momentum, unavailable open-interest or long-short-ratio fields, centered rolling windows, negative shifts, or any future-looking input.",
+  "candidate_horizons": ["15min", "1h"],
+  "candidate_horizon": "15min",
+  "evaluation_grid": [
+    {
+      "action": "perp_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "15min",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "15min",
+      "leverage": 2.0
+    },
+    {
+      "action": "perp_short",
+      "threshold_quantile": 0.2,
+      "holding_horizon": "15min",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_short",
+      "threshold_quantile": 0.2,
+      "holding_horizon": "15min",
+      "leverage": 2.0
+    },
+    {
+      "action": "perp_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "1h",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "1h",
+      "leverage": 2.0
+    },
+    {
+      "action": "perp_short",
+      "threshold_quantile": 0.2,
+      "holding_horizon": "1h",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_short",
+      "threshold_quantile": 0.2,
+      "holding_horizon": "1h",
+      "leverage": 2.0
+    }
+  ],
+  "walk_forward_settings": {
+    "train_window": "180d",
+    "validation_window": "30d",
+    "test_window": "30d",
+    "step": "30d"
+  },
+  "input_lookback_window": "7d",
+  "update_frequency": "15min",
+  "rebalance_frequency": "15min",
+  "max_repair_attempts": 1
+}

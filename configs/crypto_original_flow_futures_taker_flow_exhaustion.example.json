@@ -1,0 +1,74 @@
+{
+  "output_dir": "artifacts/crypto_real_smoke",
+  "run_id": "manual_real_futures_taker_flow_exhaustion_5m_30m_202401_202606",
+  "data_adapter": {
+    "data_path": "/home/lewiski/crypto_data",
+    "symbols": ["BTCUSDT", "SOLUSDT"],
+    "frequency": "1m",
+    "source_format": "binance_futures_jsonl",
+    "product_type": "futures",
+    "dependency_name": "binance_futures_jsonl_1m_mark_premium_funding",
+    "start_time": "2024-01-01 00:00:00",
+    "end_time": "2026-06-16 23:59:00"
+  },
+  "provider": "anthropic",
+  "repair_provider": "anthropic",
+  "model": "claude-opus-4-8",
+  "anthropic_effort": "max",
+  "anthropic_thinking": {"type": "adaptive", "display": "omitted"},
+  "anthropic_max_tokens": 128000,
+  "anthropic_timeout_seconds": 900,
+  "research_direction": "Research mechanism:\nTest whether short-term aggressive taker-flow exhaustion after a local price extension predicts immediate mean reversion on Binance USD-M futures. Specifically, test whether extreme taker-buy imbalance after an upward price extension, when premium/mark-price confirmation is weak or divergent, predicts downside reversal; and whether extreme taker-sell imbalance after a downward price extension, when premium/mark-price confirmation is weak or divergent, predicts upside reversal.\n\nVenue/product:\nBinance USD-M futures.\n\nTradable/evaluated universe:\nBTCUSDT and SOLUSDT only.\n\nFeature universe:\nSame as tradable universe until explicit feature_universe/tradable_universe split is implemented.\n\nAvailable fields:\nopen, high, low, close, volume, quote_volume, trade_count, taker_buy_base_volume, taker_buy_quote_volume, funding_rate, mark_close, premium_close.\n\nCandidate timing grid:\ninput_lookback_window candidates: 30min, 2h, 6h, 7h, 24h. This run uses 7h as the concrete evaluator input buffer while preserving 6h-scale signal normalization.\nupdate_frequency candidates: 5min, 15min. This run uses 5min as the concrete config value.\nrebalance_frequency candidates: 15min, 30min. This run uses 15min as the concrete config value.\nholding_horizon / candidate_horizon candidates: 5min, 15min, 30min.\n\nTiming rationale:\nTaker-flow imbalance and liquidity shocks are microstructure signals expected to decay faster than funding or broad premium pressure. Shorter lookbacks and shorter holding horizons are more appropriate than the previous 7d / 15min-to-1h setup. The 7h evaluator input window gives trailing 6h-style normalizations enough warm-up room for nested 15min/30min rolling features without changing the intended short-horizon signal family. The 24h lookback is included only for intraday normalization and regime conditioning, not as the primary signal horizon.\n\nPreferred factor construction:\nNormalize taker imbalance using quote-volume-adjusted measures such as 2 * taker_buy_quote_volume / quote_volume - 1. Combine this with recent price extension, trade_count acceleration, quote_volume shock, intrabar range, premium_close abnormality, and mark_close-vs-close divergence. Prefer interaction factors that require both flow exhaustion and weak premium/mark confirmation, rather than raw momentum or raw taker imbalance alone. Use symbol-specific rolling distributions and liquidity/volatility regime filters.\n\nAvoid:\nopen_interest, long_short_ratio, liquidation data, cross-asset context, raw price-only momentum, broad repeats of the rejected funding/premium/taker-pressure direction, centered rolling windows, negative shifts, target/forward-return columns, filesystem/network access, and any future-looking input. Do not treat funding_rate as the primary signal in this direction because funding is sparse relative to 1m bars and event-aware funding features are not yet implemented.\n\nEvaluation boundary:\nGenerate directional factor candidates only. The evaluator handles perp long/short action selection, thresholds, holding horizons, leverage, Binance fees, slippage, funding, walk-forward gates, reports, and candidate library persistence.",
+  "candidate_horizons": ["5min", "15min", "30min"],
+  "candidate_horizon": "15min",
+  "evaluation_grid": [
+    {
+      "action": "perp_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "5min",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_short",
+      "threshold_quantile": 0.2,
+      "holding_horizon": "5min",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "15min",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_short",
+      "threshold_quantile": 0.2,
+      "holding_horizon": "15min",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_long",
+      "threshold_quantile": 0.8,
+      "holding_horizon": "30min",
+      "leverage": 1.0
+    },
+    {
+      "action": "perp_short",
+      "threshold_quantile": 0.2,
+      "holding_horizon": "30min",
+      "leverage": 1.0
+    }
+  ],
+  "walk_forward_settings": {
+    "train_window": "180d",
+    "validation_window": "30d",
+    "test_window": "30d",
+    "step": "30d"
+  },
+  "input_lookback_window": "7h",
+  "update_frequency": "5min",
+  "rebalance_frequency": "15min",
+  "fee_rate": 0.0005,
+  "cost_source": "fallback",
+  "max_repair_attempts": 1
+}
