@@ -65,10 +65,10 @@ python -m quantaalpha_crypto.mining.cli --config configs/crypto_original_flow_sm
 
 ## Known cleanup debt (not yet fixed)
 
-- Duplicated primitives, missing shared modules: `_simple_sharpe`
-  (`evaluation/grid.py` + `evaluation/portfolio.py`), `_forward_returns`
-  (`grid.py` + `factor.py`), `_redact_secrets` (`mining/proposal.py` +
-  `mining/round.py`). Extract to `evaluation/metrics.py` and `mining/_utils.py`.
+- Shared metric primitives live in `evaluation/metrics.py` and shared mining
+  helpers in `mining/_utils.py` — use those, do not re-inline `_simple_sharpe`,
+  `_forward_returns`, `_redact_secrets`, `_progress`, etc. `_simple_sharpe` uses
+  grid semantics (empty -> NaN, zero-vol loss -> -inf); keep it that way.
 - Prompts are hardcoded in `mining/llm_provider.py`; original convention was a
   `prompts.yaml`.
 - `tests/` filename prefixes are inconsistent (`test_crypto_*` / `test_factor_*`

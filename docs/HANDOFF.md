@@ -8,27 +8,24 @@ _Last updated: 2026-06-29_
 
 ## Current state
 
-- Crypto migration landed on `main`. Local `main` is **3 commits ahead of
-  `origin/main`, not yet pushed**:
-  - `c96379d` Rewrite CLAUDE.md for Claude Code handover
-  - `8ce9a92` Hand project to Claude Code; drop Codex tooling
-  - `92b40de` Migrate to crypto-native package (quantaalpha_crypto)
+- Crypto migration landed on `main` and is **pushed to `origin/main`**.
 - Project handed from Codex to Claude Code. `.codex/` and empty `.agents/`
   removed; `AGENTS.md` renamed to `CLAUDE.md`.
-- `old/` (original QuantaAlpha) and `/artifacts/` are gitignored, reference-only.
-- Working tree is clean.
+- Duplicate-code debt paid down (commits `3e7e962`, `8986586`): shared helpers
+  now live in `mining/_utils.py` (`_redact_secrets`, `_progress`) and
+  `evaluation/metrics.py` (`_simple_sharpe`, `_forward_returns`, `_rank_ic`,
+  `_max_drawdown`, `_annualization_factor`). `_simple_sharpe` unified on grid
+  semantics per user decision (empty -> NaN, zero-vol loss -> -inf); this
+  changed portfolio backtest sharpe for degenerate cases.
+- 102 tests pass. `old/` and `/artifacts/` gitignored, reference-only.
+- These two doc edits (CLAUDE.md debt note + this file) are not yet committed.
 
 ## Next steps (priority order)
 
-1. `git push origin main` (outward action — confirm before pushing).
-2. Pay down duplicate-code debt: extract `evaluation/metrics.py`
-   (`_simple_sharpe`, `_forward_returns`, `_rank_ic`, `_max_drawdown`,
-   annualization) and `mining/_utils.py` (`_redact_secrets`, `_progress`).
-   The duplicated `_redact_secrets` is the riskiest (secret-leak surface).
-3. Move prompts out of `mining/llm_provider.py` into a `prompts.yaml`.
-4. Normalize `tests/` filenames to `test_<module>.py` (currently mixed
+1. Move prompts out of `mining/llm_provider.py` into a `prompts.yaml`.
+2. Normalize `tests/` filenames to `test_<module>.py` (currently mixed
    `test_crypto_*` / `test_factor_*` / `test_binance_*`).
-5. Optional: move root design notes into `docs/design/`
+3. Optional: move root design notes into `docs/design/`
    (`strategy_core_architecture_plan.md`, `dynamic_threshold_methods.md`);
    `CONTEXT.md` could move under `docs/` too.
 
