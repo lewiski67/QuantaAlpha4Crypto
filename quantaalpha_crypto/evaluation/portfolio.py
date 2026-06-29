@@ -5,6 +5,7 @@ from typing import Literal
 
 import pandas as pd
 
+from quantaalpha_crypto.evaluation.metrics import _max_drawdown, _simple_sharpe
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
 
 
@@ -239,21 +240,6 @@ def _funding_column_for_product(pnl_panel: CryptoPanel) -> str | None:
     if "funding_rate" in pnl_panel.data:
         return "funding_rate"
     return None
-
-
-def _simple_sharpe(returns: pd.Series) -> float:
-    if returns.empty:
-        return 0.0
-    std = returns.std(ddof=0)
-    if std == 0:
-        return float("inf") if returns.mean() > 0 else 0.0
-    return float(returns.mean() / std)
-
-
-def _max_drawdown(equity: pd.Series) -> float:
-    peak = equity.cummax()
-    drawdown = equity / peak - 1.0
-    return float(drawdown.min())
 
 
 def portfolio_backtest_result_to_dict(result: PortfolioBacktestResult) -> dict:

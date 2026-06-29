@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from quantaalpha_crypto.evaluation.metrics import _forward_returns
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
 
 
@@ -40,7 +41,11 @@ def evaluate_directional_factor(
             input_lookback_window=pd.Timedelta(input_lookback_window),
             sample_count=input_audit_sample_count,
         )
-    forward_returns = _forward_returns(feature_panel.data, horizon_delta)
+    forward_returns = _forward_returns(
+        feature_panel.data,
+        horizon_delta,
+        price_column=_default_close_column(feature_panel.data),
+    )
     aligned = pd.concat(
         [scores.rename("score"), forward_returns.rename("forward_return")],
         axis=1,
@@ -113,26 +118,6 @@ def _sample_timestamps(timestamps: pd.Index, sample_count: int) -> list[pd.Times
 def _scores_close_enough(observed: pd.Series, expected: pd.Series) -> bool:
     tolerance = 1e-12 + 1e-10 * expected.abs()
     return bool(((observed - expected).abs() <= tolerance).all())
-
-
-def _forward_returns(data: pd.DataFrame, horizon: pd.Timedelta) -> pd.Series:
-    close_column = _default_close_column(data)
-    pieces = []
-    for symbol, symbol_data in data.sort_index().groupby(level="symbol", sort=False):
-        close = symbol_data[close_column].astype("float64")
-        timestamps = close.index.get_level_values("timestamp")
-        future_index = pd.MultiIndex.from_arrays(
-            [timestamps + horizon, [symbol] * len(timestamps)],
-            names=["timestamp", "symbol"],
-        )
-        future_close = close.reindex(future_index)
-        future_close.index = close.index
-        pieces.append(future_close / close - 1.0)
-
-    if not pieces:
-        return pd.Series(dtype="float64", name="forward_return")
-
-    return pd.concat(pieces).sort_index()
 
 
 def _default_close_column(data: pd.DataFrame) -> str:

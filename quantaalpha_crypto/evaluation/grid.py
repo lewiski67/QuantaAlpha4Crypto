@@ -7,6 +7,12 @@ from typing import Literal, NotRequired, TypedDict
 import pandas as pd
 
 from quantaalpha_crypto.evaluation.factor import FactorEvaluation
+from quantaalpha_crypto.evaluation.metrics import (
+    _annualization_factor,
+    _forward_returns,
+    _rank_ic,
+    _simple_sharpe,
+)
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
 
 
@@ -151,7 +157,12 @@ def _cached_forward_returns(
     key = (id(pnl_panel), holding_horizon, price_column, funding_column)
     if key not in cache:
         cache[key] = (
-            _forward_returns(pnl_panel.data, holding_horizon, price_column=price_column),
+            _forward_returns(
+                pnl_panel.data,
+                holding_horizon,
+                price_column=price_column,
+                name="pnl_return",
+            ),
             _trial_funding_returns(pnl_panel, holding_horizon, funding_column=funding_column),
         )
     return cache[key]
@@ -367,29 +378,6 @@ def _trial_funding_returns(
     return _forward_funding(pnl_panel.data, holding_horizon, funding_column=funding_column)
 
 
-def _forward_returns(
-    data: pd.DataFrame,
-    horizon: pd.Timedelta,
-    price_column: str = "close",
-) -> pd.Series:
-    pieces = []
-    for symbol, symbol_data in data.sort_index().groupby(level="symbol", sort=False):
-        close = symbol_data[price_column].astype("float64")
-        timestamps = close.index.get_level_values("timestamp")
-        future_index = pd.MultiIndex.from_arrays(
-            [timestamps + horizon, [symbol] * len(timestamps)],
-            names=["timestamp", "symbol"],
-        )
-        future_close = close.reindex(future_index)
-        future_close.index = close.index
-        pieces.append(future_close / close - 1.0)
-
-    if not pieces:
-        return pd.Series(dtype="float64", name="pnl_return")
-
-    return pd.concat(pieces).sort_index()
-
-
 def _forward_funding(
     data: pd.DataFrame,
     horizon: pd.Timedelta,
@@ -436,28 +424,6 @@ def _funding_column_for_trial(data: pd.DataFrame, trial: EvaluationGridTrial) ->
     return None
 
 
-def _simple_sharpe(returns: pd.Series) -> float:
-    if returns.empty:
-        return float("nan")
-    mean = returns.mean()
-    std = returns.std(ddof=0)
-    if std == 0:
-        if mean > 0:
-            return float("inf")
-        if mean < 0:
-            return float("-inf")
-        return 0.0
-    return float(mean / std)
-
-
-def _rank_ic(scores: pd.Series, returns: pd.Series) -> float:
-    if len(scores) < 2:
-        return float("nan")
-    if scores.nunique(dropna=True) < 2 or returns.nunique(dropna=True) < 2:
-        return float("nan")
-    return float(scores.rank().corr(returns.rank()))
-
-
 def _grouped_forward_returns(frame: pd.DataFrame, groups: int = 2) -> tuple[dict, ...]:
     if frame.empty:
         return ()
@@ -492,16 +458,3 @@ def _annualized_decision_period_sharpe(
         .reindex(unique_timestamps, fill_value=0.0)
     )
     return _simple_sharpe(period_returns) * _annualization_factor(unique_timestamps)
-
-
-def _annualization_factor(timestamps: pd.Index) -> float:
-    if len(timestamps) < 2:
-        return 1.0
-    diffs = pd.Series(timestamps).sort_values().diff().dropna()
-    if diffs.empty:
-        return 1.0
-    median_delta = diffs.median()
-    if median_delta <= pd.Timedelta(0):
-        return 1.0
-    periods_per_year = pd.Timedelta(days=365) / median_delta
-    return float(periods_per_year ** 0.5)
