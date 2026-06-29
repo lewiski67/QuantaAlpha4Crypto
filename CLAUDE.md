@@ -34,8 +34,11 @@ after Binance fees/funding/slippage). See `docs/adr/0011-*` and `CONTEXT.md`.
   synonyms.
 - `docs/adr/` — architecture decisions (11 ADRs). Read before changing
   evaluation methodology (grid, walk-forward, cost model, gates).
-- `docs/prd/`, `docs/tasks/` — product/task specs. `docs/research/` — tested &
-  queued research directions; check before proposing a new one.
+- PRDs and task breakdowns live as **GitHub Issues** (via `gh`), not local
+  files — see `docs/agents/issue-tracker.md`. Use `to-prd`/`to-issues` and
+  publish there; do not re-create `docs/prd/` or `docs/tasks/`.
+- `docs/research/` — tested & queued research directions; check before
+  proposing a new one.
 - `quantaalpha_crypto/README.md` — module roles + research-direction template.
 
 ## Commands
@@ -55,13 +58,20 @@ python -m quantaalpha_crypto.mining.cli --config configs/crypto_original_flow_sm
 ## Working conventions
 
 - Current task state, next steps, and open decisions live in `docs/HANDOFF.md`.
-  Read it at the start of a session; update it at meaningful checkpoints.
+  Read it at the start of a session; **update it after every meaningful
+  checkpoint** (commit, decision, convention change) — unconditionally, regardless
+  of task size.
 - Default branch is `main`. The crypto migration already lives here.
 - `old/` and `/artifacts/` are gitignored — never re-add them or import from `old/`.
 - Packaging is `quantaalpha-crypto` (`pyproject.toml`), entry point
   `quantaalpha_crypto.mining.cli:main`. Keep these aligned with the package.
 - Prefer importing from the explicit module (`quantaalpha_crypto.evaluation`,
   `quantaalpha_crypto.mining`) over the top-level re-exports when role matters.
+- PRDs and task breakdowns go to **GitHub Issues** via `to-prd`/`to-issues` +
+  `gh` — do not create local `docs/prd/` or `docs/tasks/` files. Use
+  selectively: only for new subsystems or genuinely uncertain scope. Routine
+  refactors, bugfixes, and small features go straight to implementation with a
+  one-line HANDOFF entry.
 
 ## Known cleanup debt (not yet fixed)
 

@@ -18,16 +18,21 @@ _Last updated: 2026-06-29_
   semantics per user decision (empty -> NaN, zero-vol loss -> -inf); this
   changed portfolio backtest sharpe for degenerate cases.
 - 102 tests pass. `old/` and `/artifacts/` gitignored, reference-only.
-- These two doc edits (CLAUDE.md debt note + this file) are not yet committed.
+- Local `docs/prd/` and `docs/tasks/` removed — Codex-era deviation; PRDs and
+  task breakdowns now go to GitHub Issues via `to-prd`/`to-issues` + `gh`.
+  Recover from git `92b40de` if needed.
+- Root design notes moved to `docs/design/` (`dynamic_threshold_methods.md`,
+  `strategy_core_architecture_plan.md`). `CLAUDE.md` updated with PRD/HANDOFF
+  conventions. Pending commit.
 
 ## Next steps (priority order)
 
 1. Move prompts out of `mining/llm_provider.py` into a `prompts.yaml`.
 2. Normalize `tests/` filenames to `test_<module>.py` (currently mixed
    `test_crypto_*` / `test_factor_*` / `test_binance_*`).
-3. Optional: move root design notes into `docs/design/`
-   (`strategy_core_architecture_plan.md`, `dynamic_threshold_methods.md`);
-   `CONTEXT.md` could move under `docs/` too.
+3. Fix threshold look-ahead gap: `dynamic_threshold_methods.md` documents that
+   the evaluator still uses whole-window quantile thresholds (look-ahead bias).
+   Needs per-symbol rolling quantile threshold before results are live-realistic.
 
 ## Open decisions
 
