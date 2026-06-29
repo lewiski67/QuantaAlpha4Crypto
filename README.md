@@ -34,9 +34,12 @@ quantaalpha-crypto --config configs/crypto_original_flow_smoke.example.json --ou
 
 See:
 
-- `strategy_core_architecture_plan.md`
-- `dynamic_threshold_methods.md`
-- `quantaalpha_crypto/README.md`
+- `docs/design/factor-system-architecture.md` — authoritative target design
+  (time-series, pure-statistical discovery; deployment layer)
+- `CONTEXT.md` — domain language; `docs/adr/` — architecture decisions
+- `docs/design/strategy_core_architecture_plan.md` — earlier plan, superseded on
+  methodology but retained for deployment-layer detail
+- `quantaalpha_crypto/README.md` — module roles
 
 ## Tests
 

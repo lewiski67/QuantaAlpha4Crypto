@@ -1,7 +1,7 @@
 # Split research and trading gates
 
 Date: 2026-06-25
-Status: Accepted
+Status: Accepted. Amended by `docs/adr/0012-time-series-market-neutral-pure-statistical-factor-evaluation.md`: the gross/net split stands, but the Research Gate carries **no** threshold, turnover, cost, or break-even-fee diagnostics (those are deployment-layer). `break_even_fee` is retired — it requires a turnover/threshold construction the zero-parameter factor layer forbids. References to threshold/turnover/cost/break-even-fee in the Research Gate and Factor Evaluation Report below are superseded accordingly.
 
 ## Context
 

@@ -2,6 +2,17 @@
 
 `quantaalpha_crypto/` is the standalone crypto strategy research package. It is separated from the original `quantaalpha/` package; the original project should be treated as reference code only once moved under `old/`.
 
+> **Methodology in transition — this README describes the *current* code.** The
+> factor-discovery methodology is being overhauled (see
+> `docs/design/factor-system-architecture.md`, ADR-0012/0013, `CONTEXT.md`):
+> time-series, market-neutral, **pure-statistical** discovery with **zero free
+> trading parameters** in the factor layer. The "fixed Evaluation Grid",
+> "Candidate/Strong Factor Gate", the "candidate timing grid", and the
+> "evaluator handles thresholds / action / holding horizon / leverage" language
+> below all reflect the implementation being replaced. The Research Direction
+> Template in particular (it shapes LLM proposals) will be rewritten when the
+> evaluator is migrated — do not treat its grid/threshold framing as the target.
+
 ## Binance Data Adapter
 
 Path: `quantaalpha_crypto/data.py`

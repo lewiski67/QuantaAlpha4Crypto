@@ -26,14 +26,24 @@ Two-layer gates, never collapse them: **Research Gate** (mining intake; gross
 signal allowed pre-cost) vs **Trading Gate** (formal tradability; net-positive
 after Binance fees/funding/slippage). See `docs/adr/0011-*` and `CONTEXT.md`.
 
+> **Methodology in transition.** The bullets above describe the *current code*.
+> The target methodology was overhauled (ADR-0012/0013, `CONTEXT.md`, and
+> `docs/design/factor-system-architecture.md`): time-series per-symbol,
+> market-neutral, **pure-statistical** discovery with **zero free trading
+> parameters** in the factor layer. The "fixed Evaluation Grid" and single-factor
+> Sharpe gate are being retired; thresholds/sizing/regime/risk move to a
+> deployment layer. Read the design doc before changing `evaluation/`.
+
 ## Authoritative references
 
 - `CONTEXT.md` — controlled domain language. Use these exact terms (Effective
   Factor, Directional Factor, Factor Callable, Research/Trading Gate, Crypto
   Panel, Holding Horizon vs Update vs Rebalance Frequency, …). Avoid the listed
   synonyms.
-- `docs/adr/` — architecture decisions (11 ADRs). Read before changing
-  evaluation methodology (grid, walk-forward, cost model, gates).
+- `docs/adr/` — architecture decisions (13 ADRs; 0012 = paradigm, 0013 =
+  purge/embargo are the current methodology). Read before changing evaluation
+  methodology. `docs/design/factor-system-architecture.md` is the authoritative
+  target design.
 - PRDs and task breakdowns live as **GitHub Issues** (via `gh`), not local
   files — see `docs/agents/issue-tracker.md`. Use `to-prd`/`to-issues` and
   publish there; do not re-create `docs/prd/` or `docs/tasks/`.

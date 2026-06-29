@@ -1,5 +1,13 @@
 # Strategy Core Architecture Plan
 
+> **Superseded (methodology) by `docs/design/factor-system-architecture.md`.**
+> This earlier plan assumes cross-sectional evaluation, threshold/grid search in
+> the evaluator, and an explicit regime filter — all overturned by the
+> time-series, zero-free-parameter paradigm (ADR-0012). Retained for the layer
+> split (data / factor / strategy core / runner adapters), the strategy-candidate
+> schema, and the Coinbase venue-migration note, which remain useful. Where this
+> file conflicts with `factor-system-architecture.md`, the latter wins.
+
 ## Goal
 
 Build the crypto mining/evaluation stack around a reusable strategy core.

@@ -2,6 +2,13 @@
 
 This document records crypto factor research directions that have already been tested or explicitly queued. Check this log before choosing a new `research_direction` so we do not repeatedly spend LLM and evaluation budget on the same mechanism.
 
+> **Note:** The `tested` rows below (all `0 accepted`) were produced under the
+> superseded pre-ADR-0012 methodology (cross-sectional framing on 2–3 symbols,
+> grid selection, single-factor Sharpe gate, no market neutralization or
+> purge/embargo). Treat those null results as **inconclusive**, not as evidence
+> that the mechanism has no alpha; they should be re-run under the time-series,
+> pure-statistical paradigm before being trusted.
+
 ## How to Record a Direction
 
 Use one row per distinct market mechanism. If a later run only changes symbols, dates, frequency, or prompt wording while testing the same mechanism, update the existing row instead of adding a duplicate.
