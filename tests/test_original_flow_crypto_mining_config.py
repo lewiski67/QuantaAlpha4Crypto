@@ -25,27 +25,10 @@ def test_original_flow_crypto_mining_config_parses_fake_provider_run():
             },
             "provider": "fake",
             "repair_provider": "fake",
-            "candidate_horizons": ["1min", "15min"],
             "candidate_horizon": "1min",
-            "evaluation_grid": [
-                {
-                    "action": "spot_long",
-                    "threshold_quantile": 0.8,
-                    "holding_horizon": "1min",
-                    "leverage": 1.0,
-                }
-            ],
-            "walk_forward_settings": {
-                "train_window": "180d",
-                "validation_window": "30d",
-                "test_window": "30d",
-                "step": "30d",
-            },
             "input_lookback_window": "4h",
             "update_frequency": "15min",
             "rebalance_frequency": "1h",
-            "fee_rate": 0.001,
-            "cost_source": "account",
             "research_direction": "liquidity shock reversal",
             "max_repair_attempts": 2,
         }
@@ -64,8 +47,6 @@ def test_original_flow_crypto_mining_config_parses_fake_provider_run():
     assert config.timing.input_lookback_window == "4h"
     assert config.timing.update_frequency == "15min"
     assert config.timing.rebalance_frequency == "1h"
-    assert config.costs.fee_rate == pytest.approx(0.001)
-    assert config.costs.cost_source == "account"
     assert config.research_direction == "liquidity shock reversal"
 
     round_config = config.to_local_round_config()
@@ -76,10 +57,6 @@ def test_original_flow_crypto_mining_config_parses_fake_provider_run():
     assert round_config.feature_data_dependencies == ["binance_spot_1m_ohlcv"]
     assert round_config.pnl_data_dependencies == ["binance_spot_1m_ohlcv"]
     assert round_config.input_lookback_window == "4h"
-    assert round_config.update_frequency == "15min"
-    assert round_config.rebalance_frequency == "1h"
-    assert round_config.fee_rate == pytest.approx(0.001)
-    assert round_config.cost_source == "account"
     assert round_config.research_direction == "liquidity shock reversal"
 
 
@@ -96,32 +73,6 @@ def test_original_flow_crypto_mining_config_rejects_missing_timing_semantics():
     del payload["rebalance_frequency"]
 
     with pytest.raises(ValueError, match="rebalance_frequency"):
-        parse_original_flow_crypto_mining_run_config(payload)
-
-
-def test_original_flow_crypto_mining_config_uses_product_cost_fallbacks():
-    payload = _minimal_payload()
-    payload["data_adapter"]["product_type"] = "futures"
-
-    futures_config = parse_original_flow_crypto_mining_run_config(payload)
-
-    assert futures_config.costs.fee_rate == pytest.approx(0.0005)
-    assert futures_config.costs.cost_source == "fallback"
-
-    payload = _minimal_payload()
-    payload["data_adapter"]["product_type"] = "spot"
-
-    spot_config = parse_original_flow_crypto_mining_run_config(payload)
-
-    assert spot_config.costs.fee_rate == pytest.approx(0.001)
-    assert spot_config.costs.cost_source == "fallback"
-
-
-def test_original_flow_crypto_mining_config_rejects_invalid_cost_source():
-    payload = _minimal_payload()
-    payload["cost_source"] = "paper"
-
-    with pytest.raises(ValueError, match="cost_source"):
         parse_original_flow_crypto_mining_run_config(payload)
 
 
@@ -152,22 +103,7 @@ def _minimal_payload():
         },
         "provider": "fake",
         "repair_provider": "fake",
-        "candidate_horizons": ["1min"],
         "candidate_horizon": "1min",
-        "evaluation_grid": [
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        "walk_forward_settings": {
-            "train_window": "180d",
-            "validation_window": "30d",
-            "test_window": "30d",
-            "step": "30d",
-        },
         "input_lookback_window": "4h",
         "update_frequency": "15min",
         "rebalance_frequency": "1h",

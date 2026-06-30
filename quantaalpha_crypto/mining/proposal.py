@@ -7,7 +7,6 @@ from hashlib import sha1
 from typing import Any, Callable, Protocol
 
 from quantaalpha_crypto.evaluation.factor import FactorCallable
-from quantaalpha_crypto.evaluation.grid import EvaluationGridItem, PnlPanelInput
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
 from quantaalpha_crypto.mining._utils import _progress, _redact_secrets
 from quantaalpha_crypto.mining.batch_runner import (
@@ -30,8 +29,6 @@ class FactorProposalCandidate:
 class FactorProposalContext:
     run_id: str
     candidate_horizon: str
-    evaluation_grid: list[EvaluationGridItem]
-    walk_forward_settings: dict[str, Any]
     feature_data_dependencies: list[str]
     pnl_data_dependencies: list[str]
     input_lookback_window: str | None = None
@@ -64,8 +61,6 @@ class FactorRepairContext:
     attempt_number: int
     max_attempts: int
     candidate_horizon: str
-    evaluation_grid: list[EvaluationGridItem]
-    walk_forward_settings: dict[str, Any]
     feature_data_dependencies: list[str]
     pnl_data_dependencies: list[str]
     input_lookback_window: str | None = None
@@ -93,17 +88,12 @@ def run_factor_proposal_provider(
     workspace: CryptoFactorWorkspace,
     provider: FactorProposalProvider,
     feature_panel: CryptoPanel,
-    pnl_panel: PnlPanelInput,
     candidate_horizon: str,
-    evaluation_grid: list[EvaluationGridItem],
-    walk_forward_settings: dict[str, Any],
     feature_data_dependencies: list[str],
     pnl_data_dependencies: list[str],
     input_lookback_window: str | None = None,
     update_frequency: str | None = None,
     rebalance_frequency: str | None = None,
-    fee_rate: float = 0.0,
-    cost_source: str = "fallback",
     research_direction: str | None = None,
     previous_round_feedback: dict[str, Any] | None = None,
     progress_callback: Callable[[str], None] | None = None,
@@ -112,8 +102,6 @@ def run_factor_proposal_provider(
     context = FactorProposalContext(
         run_id=workspace.root.name,
         candidate_horizon=candidate_horizon,
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=feature_data_dependencies,
         pnl_data_dependencies=pnl_data_dependencies,
         input_lookback_window=input_lookback_window,
@@ -136,21 +124,14 @@ def run_factor_proposal_provider(
     return run_supplied_factor_callables(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factors=[
             (candidate.factor_name, candidate.factor_callable_reference, candidate.factor_callable)
             for candidate in proposal.candidates
         ],
         candidate_horizon=candidate_horizon,
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=feature_data_dependencies,
         pnl_data_dependencies=pnl_data_dependencies,
         input_lookback_window=input_lookback_window,
-        update_frequency=update_frequency,
-        rebalance_frequency=rebalance_frequency,
-        fee_rate=fee_rate,
-        cost_source=cost_source,
         progress_callback=progress_callback,
     )
 
@@ -161,17 +142,12 @@ def run_factor_proposal_provider_with_repair(
     repair_provider: FactorRepairProvider,
     max_repair_attempts: int,
     feature_panel: CryptoPanel,
-    pnl_panel: PnlPanelInput,
     candidate_horizon: str,
-    evaluation_grid: list[EvaluationGridItem],
-    walk_forward_settings: dict[str, Any],
     feature_data_dependencies: list[str],
     pnl_data_dependencies: list[str],
     input_lookback_window: str | None = None,
     update_frequency: str | None = None,
     rebalance_frequency: str | None = None,
-    fee_rate: float = 0.0,
-    cost_source: str = "fallback",
     research_direction: str | None = None,
     previous_round_feedback: dict[str, Any] | None = None,
     progress_callback: Callable[[str], None] | None = None,
@@ -183,8 +159,6 @@ def run_factor_proposal_provider_with_repair(
     context = FactorProposalContext(
         run_id=workspace.root.name,
         candidate_horizon=candidate_horizon,
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=feature_data_dependencies,
         pnl_data_dependencies=pnl_data_dependencies,
         input_lookback_window=input_lookback_window,
@@ -208,11 +182,13 @@ def run_factor_proposal_provider_with_repair(
     for candidate in proposal.candidates:
         current_candidate = candidate
         for attempt_number in range(max_repair_attempts + 1):
-            _progress(progress_callback, f"candidate_evaluation_start {current_candidate.factor_name} attempt={attempt_number}")
+            _progress(
+                progress_callback,
+                f"candidate_evaluation_start {current_candidate.factor_name} attempt={attempt_number}",
+            )
             run_result = run_supplied_factor_callables(
                 workspace=workspace,
                 feature_panel=feature_panel,
-                pnl_panel=pnl_panel,
                 factors=[
                     (
                         current_candidate.factor_name,
@@ -221,15 +197,9 @@ def run_factor_proposal_provider_with_repair(
                     )
                 ],
                 candidate_horizon=candidate_horizon,
-                evaluation_grid=evaluation_grid,
-                walk_forward_settings=walk_forward_settings,
                 feature_data_dependencies=feature_data_dependencies,
                 pnl_data_dependencies=pnl_data_dependencies,
                 input_lookback_window=input_lookback_window,
-                update_frequency=update_frequency,
-                rebalance_frequency=rebalance_frequency,
-                fee_rate=fee_rate,
-                cost_source=cost_source,
                 progress_callback=progress_callback,
             )
             results.extend(run_result.factors)
@@ -249,7 +219,10 @@ def run_factor_proposal_provider_with_repair(
                 break
 
             diagnostic = _read_diagnostic(workspace, failed_result.diagnostic_reference)
-            _progress(progress_callback, f"repair_start {current_candidate.factor_name} attempt={attempt_number + 1}")
+            _progress(
+                progress_callback,
+                f"repair_start {current_candidate.factor_name} attempt={attempt_number + 1}",
+            )
             repair_result = repair_provider.repair(
                 FactorRepairContext(
                     run_id=workspace.root.name,
@@ -259,8 +232,6 @@ def run_factor_proposal_provider_with_repair(
                     attempt_number=attempt_number + 1,
                     max_attempts=max_repair_attempts,
                     candidate_horizon=candidate_horizon,
-                    evaluation_grid=evaluation_grid,
-                    walk_forward_settings=walk_forward_settings,
                     feature_data_dependencies=feature_data_dependencies,
                     pnl_data_dependencies=pnl_data_dependencies,
                     input_lookback_window=input_lookback_window,
@@ -425,7 +396,11 @@ def _persist_factor_artifacts(
         )
     )
     for candidate in candidates:
-        if candidate.source_code is None and provider_result.raw_response is None and provider_result.parsed_response is None:
+        if (
+            candidate.source_code is None
+            and provider_result.raw_response is None
+            and provider_result.parsed_response is None
+        ):
             continue
         reference = _artifact_reference(workspace, candidate.factor_name)
         source_code = candidate.source_code or ""

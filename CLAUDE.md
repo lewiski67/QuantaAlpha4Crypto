@@ -4,6 +4,32 @@ Crypto-native factor research system targeting Binance. Migrated in-place
 from the original Qlib / A-share / daily-frequency QuantaAlpha (now
 reference-only under `old/`, gitignored).
 
+## Decision discipline (read first)
+
+Before any non-trivial decision — design choices, methodology changes, what to
+build next, how to structure code, anything with consequences — first ask
+yourself: *is this actually the right call?* Then route on your honest confidence:
+
+- **Confident it's right** (clear best option, reversible, or you can justify it
+  from the codebase/docs/established conventions): just do it, and state the
+  decision and why in one line.
+- **Not confident** (genuine trade-off, ambiguous requirement, hard-to-reverse,
+  or you're guessing at intent): **stop and discuss with the user first.** Do not
+  guess and barrel ahead. Surface the uncertainty, give your recommendation and
+  the strongest counterargument, and let the user decide.
+
+**The cardinal sin is acting on an uncertain call and apologizing afterward.**
+The user hates after-the-fact apologies more than anything. An apology means you
+already knew you were unsure and chose to barrel ahead anyway — that is exactly
+the moment you should have stopped and asked. Ask *before*, never apologize
+*after*. If you find yourself about to write "sorry, I assumed…" / "my mistake, I
+should have…", you failed one step earlier by not surfacing the uncertainty when
+you still had it. There is no credit for a polite apology; the only acceptable
+path on an uncertain call is to raise it first.
+
+This does not mean ask about everything — confident, reversible calls should just
+be made. The rule is about *uncertain* calls: on those, discuss first.
+
 ## Architecture (do not break)
 
 Active package: `quantaalpha_crypto/`, with one enforced dependency direction:

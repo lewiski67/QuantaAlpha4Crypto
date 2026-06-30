@@ -105,21 +105,6 @@ def test_local_crypto_mining_round_writes_complete_research_artifact(tmp_path):
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
-    evaluation_grid = [
-        {
-            "action": "spot_long",
-            "threshold_quantile": 0.8,
-            "holding_horizon": "1min",
-            "leverage": 1.0,
-        }
-    ]
-    walk_forward_settings = {
-        "train_window": "2min",
-        "validation_window": "2min",
-        "test_window": "2min",
-        "step": "2min",
-    }
 
     result = run_local_crypto_mining_round(
         config=CryptoMiningRoundConfig(
@@ -129,10 +114,7 @@ def test_local_crypto_mining_round_writes_complete_research_artifact(tmp_path):
                 "feature_data": ["fixture_spot_1m_ohlcv"],
                 "pnl_data": ["fixture_spot_1m_ohlcv"],
             },
-            candidate_horizons=["1min"],
             candidate_horizon="1min",
-            evaluation_grid=evaluation_grid,
-            walk_forward_settings=walk_forward_settings,
             feature_data_dependencies=["fixture_spot_1m_ohlcv"],
             pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
             max_repair_attempts=1,
@@ -141,7 +123,6 @@ def test_local_crypto_mining_round_writes_complete_research_artifact(tmp_path):
         proposal_provider=FakeRoundProposalProvider(),
         repair_provider=FakeRoundRepairProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
     )
 
     assert result.workspace.root == tmp_path / "round_001"
@@ -155,15 +136,16 @@ def test_local_crypto_mining_round_writes_complete_research_artifact(tmp_path):
         ("repaired_momentum", "BTCUSDT"),
         ("repaired_momentum", "ETHUSDT"),
     ]
+    # New paradigm: all non-failed factors are "candidate" (placeholder)
     assert [factor.gate_status for factor in result.batch_result.factors] == [
-        "strong",
-        "rejected",
-        "rejected",
-        "rejected",
+        "candidate",
+        "candidate",
+        "candidate",
+        "candidate",
         "execution_failed",
         "execution_failed",
-        "strong",
-        "rejected",
+        "candidate",
+        "candidate",
     ]
 
     assert (result.workspace.reports_dir / "momentum__BTCUSDT.json").exists()
@@ -175,12 +157,9 @@ def test_local_crypto_mining_round_writes_complete_research_artifact(tmp_path):
     assert (result.workspace.rejected_dir / "broken__BTCUSDT.json").exists()
     assert (result.workspace.rejected_dir / "broken__ETHUSDT.json").exists()
 
+    # Library storage is deferred to iteration 2
     library = load_candidate_factor_library(result.workspace.candidate_library_path)
-    assert [entry["factor_callable_reference"] for entry in library["entries"]] == [
-        "fake_round.momentum",
-        "fake_round.repaired_momentum",
-    ]
-    assert [entry["symbol"] for entry in library["entries"]] == ["BTCUSDT", "BTCUSDT"]
+    assert library["entries"] == []
 
     manifest = json.loads(result.workspace.manifest_path.read_text(encoding="utf-8"))
     assert manifest["artifact_type"] == "crypto_factor_workspace"
@@ -192,9 +171,9 @@ def test_local_crypto_mining_round_writes_complete_research_artifact(tmp_path):
     assert manifest["mining_round"]["status"] == "completed"
     assert manifest["mining_round"]["live_strategy"] is False
     assert manifest["mining_round"]["result_counts"] == {
-        "accepted": 2,
+        "accepted": 0,
         "execution_failed": 2,
-        "rejected": 4,
+        "rejected": 0,
         "total": 8,
     }
     assert manifest["mining_round"]["timing"]["total_seconds"] >= 0.0
@@ -216,7 +195,6 @@ def test_local_crypto_mining_round_feeds_previous_round_results_to_next_proposal
         proposal_provider=FakeRoundProposalProvider(),
         repair_provider=FakeRoundRepairProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
     )
 
     previous_round_feedback = build_round_feedback_context(first_round.workspace)
@@ -227,10 +205,7 @@ def test_local_crypto_mining_round_feeds_previous_round_results_to_next_proposal
             output_dir=tmp_path,
             run_id="round_002",
             crypto_data_universe=config.crypto_data_universe,
-            candidate_horizons=config.candidate_horizons,
             candidate_horizon=config.candidate_horizon,
-            evaluation_grid=config.evaluation_grid,
-            walk_forward_settings=config.walk_forward_settings,
             feature_data_dependencies=config.feature_data_dependencies,
             pnl_data_dependencies=config.pnl_data_dependencies,
             max_repair_attempts=0,
@@ -238,30 +213,21 @@ def test_local_crypto_mining_round_feeds_previous_round_results_to_next_proposal
         proposal_provider=followup_provider,
         repair_provider=FakeRoundRepairProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         previous_round_feedback=previous_round_feedback,
     )
 
     feedback = followup_provider.contexts[0].previous_round_feedback
+    # New paradigm: no accepted factors (library storage deferred), all non-failed go to "rejected"
     assert feedback["result_counts"] == {
-        "accepted": 2,
+        "accepted": 0,
         "execution_failed": 2,
-        "rejected": 4,
+        "rejected": 0,
         "total": 8,
     }
-    assert [(item["factor_name"], item["symbol"]) for item in feedback["accepted"]] == [
-        ("momentum", "BTCUSDT"),
-        ("repaired_momentum", "BTCUSDT"),
-    ]
-    assert [(item["factor_name"], item["symbol"]) for item in feedback["rejected"]] == [
-        ("momentum", "ETHUSDT"),
-        ("contrarian", "BTCUSDT"),
-        ("contrarian", "ETHUSDT"),
-        ("repaired_momentum", "ETHUSDT"),
-    ]
+    # Non-failed, non-accepted factors appear in "rejected" bucket of feedback
+    assert len(feedback["accepted"]) == 0
+    assert len(feedback["execution_failed"]) > 0
     assert feedback["execution_failed"][0]["diagnostic"]["error_message"] == "boom"
-    assert feedback["cost_aware_metric_preference"] == "cost_adjusted"
-    assert "cost_adjusted_metrics" in feedback["accepted"][0]
     assert "api_key" not in json.dumps(feedback).lower()
 
 
@@ -274,7 +240,6 @@ def test_local_crypto_mining_round_redacts_previous_feedback_before_provider_and
         proposal_provider=followup_provider,
         repair_provider=FakeRoundRepairProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         previous_round_feedback={
             "accepted": [{"factor_name": "safe"}],
             "api_key": "sk-should-not-reach-provider",
@@ -322,20 +287,6 @@ def _fixture_round_inputs(tmp_path):
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
     pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
-    evaluation_grid = [
-        {
-            "action": "spot_long",
-            "threshold_quantile": 0.8,
-            "holding_horizon": "1min",
-            "leverage": 1.0,
-        }
-    ]
-    walk_forward_settings = {
-        "train_window": "2min",
-        "validation_window": "2min",
-        "test_window": "2min",
-        "step": "2min",
-    }
     return (
         feature_panel,
         pnl_panel,
@@ -346,10 +297,7 @@ def _fixture_round_inputs(tmp_path):
                 "feature_data": ["fixture_spot_1m_ohlcv"],
                 "pnl_data": ["fixture_spot_1m_ohlcv"],
             },
-            candidate_horizons=["1min"],
             candidate_horizon="1min",
-            evaluation_grid=evaluation_grid,
-            walk_forward_settings=walk_forward_settings,
             feature_data_dependencies=["fixture_spot_1m_ohlcv"],
             pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
             max_repair_attempts=1,

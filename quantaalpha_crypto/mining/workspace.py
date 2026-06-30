@@ -22,10 +22,11 @@ def create_crypto_factor_workspace(
     output_dir: str | Path,
     run_id: str,
     crypto_data_universe: dict[str, Any],
-    candidate_horizons: list[str],
-    evaluation_grid: list[dict[str, Any]],
-    walk_forward_settings: dict[str, Any],
+    candidate_horizons: list[str] | None = None,
+    evaluation_grid: list[dict[str, Any]] | None = None,
+    walk_forward_settings: dict[str, Any] | None = None,
 ) -> CryptoFactorWorkspace:
+    del candidate_horizons, evaluation_grid, walk_forward_settings  # deprecated, ignored
     """Create a deterministic research workspace for one crypto factor mining run."""
     _validate_run_id(run_id)
     root = Path(output_dir) / run_id
@@ -47,9 +48,6 @@ def create_crypto_factor_workspace(
             "live_strategy": False,
             "summary": "Research artifact workspace for crypto factor mining.",
             "crypto_data_universe": dict(crypto_data_universe),
-            "candidate_horizons": list(candidate_horizons),
-            "evaluation_grid": list(evaluation_grid),
-            "walk_forward_settings": dict(walk_forward_settings),
             "artifact_paths": {
                 "reports_dir": "reports",
                 "rejected_dir": "rejected",

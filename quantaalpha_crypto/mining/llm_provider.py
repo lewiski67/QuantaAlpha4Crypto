@@ -399,8 +399,6 @@ def _repair_user_prompt(context: FactorRepairContext) -> str:
                 "attempt_number": context.attempt_number,
                 "max_attempts": context.max_attempts,
                 "candidate_horizon": context.candidate_horizon,
-                "evaluation_grid": context.evaluation_grid,
-                "walk_forward_settings": context.walk_forward_settings,
                 "feature_data_dependencies": context.feature_data_dependencies,
                 "pnl_data_dependencies": context.pnl_data_dependencies,
                 "input_lookback_window": context.input_lookback_window,

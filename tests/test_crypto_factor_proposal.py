@@ -222,71 +222,14 @@ class SameNameRetryRepairProvider:
 
 
 def test_proposal_provider_candidates_are_evaluated_through_gates_and_recorded(tmp_path):
-    panel_data = build_crypto_panel(
-        pd.DataFrame(
-            [
-                {
-                    "timestamp": timestamp,
-                    "symbol": symbol,
-                    "open": close,
-                    "high": close,
-                    "low": close,
-                    "close": close,
-                    "volume": 10,
-                }
-                for minute in range(8)
-                for timestamp, symbol, close in [
-                    (
-                        f"2026-01-01 00:0{minute}:00",
-                        "BTCUSDT",
-                        100 + minute * 10,
-                    ),
-                    (
-                        f"2026-01-01 00:0{minute}:00",
-                        "ETHUSDT",
-                        100 - minute * 5,
-                    ),
-                ]
-            ]
-        )
-    )
-    feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
-    evaluation_grid = [
-        {
-            "action": "spot_long",
-            "threshold_quantile": 0.8,
-            "holding_horizon": "1min",
-            "leverage": 1.0,
-        }
-    ]
-    walk_forward_settings = {
-        "train_window": "2min",
-        "validation_window": "2min",
-        "test_window": "2min",
-        "step": "2min",
-    }
-    workspace = create_crypto_factor_workspace(
-        output_dir=tmp_path,
-        run_id="run_001",
-        crypto_data_universe={
-            "feature_data": ["fixture_spot_1m_ohlcv"],
-            "pnl_data": ["fixture_spot_1m_ohlcv"],
-        },
-        candidate_horizons=["1min"],
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
-    )
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     provider = FakeProposalProvider()
     result = run_factor_proposal_provider(
         workspace=workspace,
         provider=provider,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
@@ -296,9 +239,10 @@ def test_proposal_provider_candidates_are_evaluated_through_gates_and_recorded(t
         ("momentum", "BTCUSDT"),
         ("momentum", "ETHUSDT"),
     ]
-    assert result.factors[0].gate_status == "strong"
-    assert result.factors[0].library_entry_stored is True
-    assert result.factors[1].gate_status == "rejected"
+    # New paradigm: all non-failed factors are "candidate" (placeholder)
+    assert result.factors[0].gate_status == "candidate"
+    assert result.factors[0].library_entry_stored is False
+    assert result.factors[1].gate_status == "candidate"
     assert result.factors[1].library_entry_stored is False
     assert (workspace.reports_dir / "momentum__BTCUSDT.json").exists()
     assert (workspace.reports_dir / "momentum__ETHUSDT.json").exists()
@@ -306,10 +250,7 @@ def test_proposal_provider_candidates_are_evaluated_through_gates_and_recorded(t
     assert provider.contexts[0].research_direction == "liquidity shock reversal"
 
     library = load_candidate_factor_library(workspace.candidate_library_path)
-    assert [entry["factor_callable_reference"] for entry in library["entries"]] == [
-        "fake_provider.momentum"
-    ]
-    assert [entry["symbol"] for entry in library["entries"]] == ["BTCUSDT"]
+    assert library["entries"] == []
 
     manifest = json.loads(workspace.manifest_path.read_text(encoding="utf-8"))
     proposal_run = manifest["proposal_runs"][0]
@@ -329,16 +270,13 @@ def test_proposal_provider_candidates_are_evaluated_through_gates_and_recorded(t
 
 
 def test_proposal_provider_persists_factor_artifacts_before_evaluation(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     run_factor_proposal_provider(
         workspace=workspace,
         provider=ArtifactProposalProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         input_lookback_window="4h",
@@ -375,16 +313,13 @@ def test_proposal_provider_persists_factor_artifacts_before_evaluation(tmp_path)
 
 
 def test_proposal_provider_redacts_secret_prompt_context_from_artifacts_and_manifest(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     run_factor_proposal_provider(
         workspace=workspace,
         provider=SecretPromptContextProposalProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
@@ -402,16 +337,13 @@ def test_proposal_provider_redacts_secret_prompt_context_from_artifacts_and_mani
 
 
 def test_proposal_provider_manifest_keeps_distinct_artifact_references_for_duplicate_names(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     run_factor_proposal_provider(
         workspace=workspace,
         provider=DuplicateNameArtifactProposalProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
@@ -432,16 +364,13 @@ def test_proposal_provider_manifest_keeps_distinct_artifact_references_for_dupli
 
 
 def test_proposal_provider_parse_or_compile_failure_becomes_rejected_diagnostic(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     result = run_factor_proposal_provider(
         workspace=workspace,
         provider=FailingArtifactProposalProvider(),
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         input_lookback_window="4h",
@@ -459,7 +388,7 @@ def test_proposal_provider_parse_or_compile_failure_becomes_rejected_diagnostic(
 
 
 def test_repair_loop_retries_failed_generated_callable_and_evaluates_repaired_candidate(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
     repair_provider = RepairingProvider()
 
     result = run_factor_proposal_provider_with_repair(
@@ -468,10 +397,7 @@ def test_repair_loop_retries_failed_generated_callable_and_evaluates_repaired_ca
         repair_provider=repair_provider,
         max_repair_attempts=2,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
@@ -487,9 +413,10 @@ def test_repair_loop_retries_failed_generated_callable_and_evaluates_repaired_ca
     assert result.factors[0].diagnostic_reference == "rejected/broken__BTCUSDT.json"
     assert result.factors[1].gate_status == "execution_failed"
     assert result.factors[1].diagnostic_reference == "rejected/broken__ETHUSDT.json"
-    assert result.factors[2].gate_status == "strong"
-    assert result.factors[2].library_entry_stored is True
-    assert result.factors[3].gate_status == "rejected"
+    # New paradigm: repaired factors are "candidate"
+    assert result.factors[2].gate_status == "candidate"
+    assert result.factors[2].library_entry_stored is False
+    assert result.factors[3].gate_status == "candidate"
     assert result.factors[3].library_entry_stored is False
     assert (workspace.reports_dir / "momentum_repaired__BTCUSDT.json").exists()
     assert (workspace.reports_dir / "momentum_repaired__ETHUSDT.json").exists()
@@ -499,10 +426,7 @@ def test_repair_loop_retries_failed_generated_callable_and_evaluates_repaired_ca
     assert repair_provider.contexts[0].research_direction == "liquidity shock reversal"
 
     library = load_candidate_factor_library(workspace.candidate_library_path)
-    assert [entry["factor_callable_reference"] for entry in library["entries"]] == [
-        "repair_provider.momentum_repaired"
-    ]
-    assert [entry["symbol"] for entry in library["entries"]] == ["BTCUSDT"]
+    assert library["entries"] == []
 
     manifest = json.loads(workspace.manifest_path.read_text(encoding="utf-8"))
     repair_attempt = manifest["repair_runs"][0]["attempts"][0]
@@ -517,7 +441,7 @@ def test_repair_loop_retries_failed_generated_callable_and_evaluates_repaired_ca
 
 
 def test_repair_provider_persists_repaired_factor_artifact(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     run_factor_proposal_provider_with_repair(
         workspace=workspace,
@@ -525,10 +449,7 @@ def test_repair_provider_persists_repaired_factor_artifact(tmp_path):
         repair_provider=ArtifactRepairingProvider(),
         max_repair_attempts=1,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         input_lookback_window="4h",
@@ -552,7 +473,7 @@ def test_repair_provider_persists_repaired_factor_artifact(tmp_path):
 
 
 def test_repair_loop_preserves_unrepaired_failure_without_library_entry(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     result = run_factor_proposal_provider_with_repair(
         workspace=workspace,
@@ -560,10 +481,7 @@ def test_repair_loop_preserves_unrepaired_failure_without_library_entry(tmp_path
         repair_provider=UnrepairedProvider(),
         max_repair_attempts=1,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )
@@ -586,7 +504,7 @@ def test_repair_loop_preserves_unrepaired_failure_without_library_entry(tmp_path
 
 
 def test_repair_loop_preserves_multiple_failed_attempt_diagnostics(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     result = run_factor_proposal_provider_with_repair(
         workspace=workspace,
@@ -594,10 +512,7 @@ def test_repair_loop_preserves_multiple_failed_attempt_diagnostics(tmp_path):
         repair_provider=SameNameRetryRepairProvider(),
         max_repair_attempts=2,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )
@@ -614,7 +529,8 @@ def test_repair_loop_preserves_multiple_failed_attempt_diagnostics(tmp_path):
         json.loads((workspace.root / reference).read_text(encoding="utf-8"))["error_message"]
         for reference in failed_references
     ] == ["boom", "boom", "second", "second"]
-    assert ("fixed", "BTCUSDT", "strong") in [
+    # New paradigm: "fixed" is now "candidate" rather than "strong"
+    assert ("fixed", "BTCUSDT", "candidate") in [
         (factor.factor_name, factor.symbol, factor.gate_status)
         for factor in result.factors
     ]
@@ -650,21 +566,6 @@ def _fixture_run(tmp_path):
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
-    evaluation_grid = [
-        {
-            "action": "spot_long",
-            "threshold_quantile": 0.8,
-            "holding_horizon": "1min",
-            "leverage": 1.0,
-        }
-    ]
-    walk_forward_settings = {
-        "train_window": "2min",
-        "validation_window": "2min",
-        "test_window": "2min",
-        "step": "2min",
-    }
     workspace = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_001",
@@ -672,8 +573,5 @@ def _fixture_run(tmp_path):
             "feature_data": ["fixture_spot_1m_ohlcv"],
             "pnl_data": ["fixture_spot_1m_ohlcv"],
         },
-        candidate_horizons=["1min"],
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
     )
-    return feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings
+    return feature_panel, workspace

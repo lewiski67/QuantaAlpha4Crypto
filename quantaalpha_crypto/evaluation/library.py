@@ -19,9 +19,6 @@ class CandidateFactorLibraryEntry:
     gate_metadata: dict[str, Any]
     feature_data_dependencies: list[str]
     pnl_data_dependencies: list[str]
-    candidate_horizons: list[str]
-    evaluation_grid: list[dict[str, Any]]
-    walk_forward_settings: dict[str, Any]
     live_strategy: bool = False
     artifact_type: str = "candidate_factor_library_entry"
 
@@ -32,9 +29,6 @@ def append_candidate_factor_library_entry(
     report_reference: str,
     report: FactorEvaluationReport,
     gate_result: FactorGateResult,
-    candidate_horizons: list[str],
-    evaluation_grid: list[dict[str, Any]],
-    walk_forward_settings: dict[str, Any],
 ) -> CandidateFactorLibraryEntry:
     """Append an accepted factor evaluation to the research Candidate Factor Library."""
     if gate_result.status == "rejected":
@@ -51,9 +45,6 @@ def append_candidate_factor_library_entry(
         gate_metadata=_gate_metadata(gate_result),
         feature_data_dependencies=list(report.feature_data_dependencies),
         pnl_data_dependencies=list(report.pnl_data_dependencies),
-        candidate_horizons=list(candidate_horizons),
-        evaluation_grid=list(evaluation_grid),
-        walk_forward_settings=dict(walk_forward_settings),
     )
 
     library = load_candidate_factor_library(library_path)

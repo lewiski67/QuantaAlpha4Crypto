@@ -10,7 +10,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from quantaalpha_crypto.evaluation.grid import EvaluationGridItem, PnlPanelInput
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
 from quantaalpha_crypto.mining.batch_runner import (
     BatchFactorResult,
@@ -31,11 +30,8 @@ class CryptoFactorSource:
 def run_crypto_factor_sources(
     workspace: CryptoFactorWorkspace,
     feature_panel: CryptoPanel,
-    pnl_panel: PnlPanelInput,
     factor_sources: list[CryptoFactorSource],
     candidate_horizon: str,
-    evaluation_grid: list[EvaluationGridItem],
-    walk_forward_settings: dict[str, Any],
     feature_data_dependencies: list[str],
     pnl_data_dependencies: list[str],
     input_lookback_window: str | None = None,
@@ -52,11 +48,8 @@ def run_crypto_factor_sources(
         run_result = run_supplied_factor_callables(
             workspace=workspace,
             feature_panel=feature_panel,
-            pnl_panel=pnl_panel,
             factors=[(source.factor_name, source.factor_callable_reference, factor)],
             candidate_horizon=candidate_horizon,
-            evaluation_grid=evaluation_grid,
-            walk_forward_settings=walk_forward_settings,
             feature_data_dependencies=feature_data_dependencies,
             pnl_data_dependencies=pnl_data_dependencies,
             input_lookback_window=input_lookback_window,

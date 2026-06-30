@@ -203,8 +203,6 @@ def test_anthropic_repair_provider_parses_repaired_candidate():
             attempt_number=1,
             max_attempts=2,
             candidate_horizon="1min",
-            evaluation_grid=[],
-            walk_forward_settings={},
             feature_data_dependencies=["fixture_spot_1m_ohlcv"],
             pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         )
@@ -249,8 +247,6 @@ def _repair_context():
         attempt_number=1,
         max_attempts=2,
         candidate_horizon="1min",
-        evaluation_grid=[],
-        walk_forward_settings={},
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
@@ -261,20 +257,6 @@ def _proposal_context():
     return FactorProposalContext(
         run_id="run_001",
         candidate_horizon="1min",
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
-        },
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",

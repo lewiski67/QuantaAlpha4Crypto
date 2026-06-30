@@ -13,12 +13,11 @@ from quantaalpha_crypto import (
 
 
 def test_crypto_factor_runner_executes_source_factors_through_evaluation_core(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     result = run_crypto_factor_sources(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factor_sources=[
             CryptoFactorSource(
                 factor_name="momentum",
@@ -27,8 +26,6 @@ def test_crypto_factor_runner_executes_source_factors_through_evaluation_core(tm
             )
         ],
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )
@@ -37,25 +34,25 @@ def test_crypto_factor_runner_executes_source_factors_through_evaluation_core(tm
         ("momentum", "BTCUSDT"),
         ("momentum", "ETHUSDT"),
     ]
-    assert result.factors[0].gate_status == "strong"
-    assert result.factors[0].library_entry_stored is True
-    assert result.factors[1].gate_status == "rejected"
+    # New paradigm: all non-failed factors are "candidate" (placeholder)
+    assert result.factors[0].gate_status == "candidate"
+    assert result.factors[0].library_entry_stored is False
+    assert result.factors[1].gate_status == "candidate"
     assert result.factors[1].library_entry_stored is False
     assert (workspace.reports_dir / "momentum__BTCUSDT.json").exists()
     assert (workspace.reports_dir / "momentum__ETHUSDT.json").exists()
 
+    # Library storage is deferred to iteration 2
     library = load_candidate_factor_library(workspace.candidate_library_path)
-    assert [entry["factor_callable_reference"] for entry in library["entries"]] == ["source.momentum"]
-    assert [entry["symbol"] for entry in library["entries"]] == ["BTCUSDT"]
+    assert library["entries"] == []
 
 
 def test_crypto_factor_runner_converts_source_failures_to_rejected_diagnostics(tmp_path):
-    feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings = _fixture_run(tmp_path)
+    feature_panel, workspace = _fixture_run(tmp_path)
 
     result = run_crypto_factor_sources(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factor_sources=[
             CryptoFactorSource(
                 factor_name="compile_bad",
@@ -84,8 +81,6 @@ def test_crypto_factor_runner_converts_source_failures_to_rejected_diagnostics(t
             ),
         ],
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )
@@ -149,21 +144,6 @@ def _fixture_run(tmp_path):
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
-    evaluation_grid = [
-        {
-            "action": "spot_long",
-            "threshold_quantile": 0.8,
-            "holding_horizon": "1min",
-            "leverage": 1.0,
-        }
-    ]
-    walk_forward_settings = {
-        "train_window": "2min",
-        "validation_window": "2min",
-        "test_window": "2min",
-        "step": "2min",
-    }
     workspace = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_001",
@@ -171,8 +151,5 @@ def _fixture_run(tmp_path):
             "feature_data": ["fixture_spot_1m_ohlcv"],
             "pnl_data": ["fixture_spot_1m_ohlcv"],
         },
-        candidate_horizons=["1min"],
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
     )
-    return feature_panel, pnl_panel, workspace, evaluation_grid, walk_forward_settings
+    return feature_panel, workspace

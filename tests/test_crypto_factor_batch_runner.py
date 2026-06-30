@@ -35,7 +35,6 @@ def test_batch_runner_evaluates_supplied_factor_callables_and_updates_library(tm
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
     workspace = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_001",
@@ -43,46 +42,16 @@ def test_batch_runner_evaluates_supplied_factor_callables_and_updates_library(tm
             "feature_data": ["fixture_spot_1m_ohlcv"],
             "pnl_data": ["fixture_spot_1m_ohlcv"],
         },
-        candidate_horizons=["1min"],
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
-        },
     )
 
     result = run_supplied_factor_callables(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factors=[
             ("momentum", "tests.factors.momentum", lambda data: data["close"]),
             ("contrarian", "tests.factors.contrarian", lambda data: -data["close"]),
         ],
         candidate_horizon="1min",
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
-        },
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )
@@ -94,25 +63,23 @@ def test_batch_runner_evaluates_supplied_factor_callables_and_updates_library(tm
         ("contrarian", "ETHUSDT"),
     ]
     assert [factor.gate_status for factor in result.factors] == [
-        "rejected",
-        "rejected",
-        "rejected",
-        "rejected",
+        "candidate",
+        "candidate",
+        "candidate",
+        "candidate",
     ]
     assert result.factors[0].timing is not None
     assert result.factors[0].timing["factor_execution_seconds"] >= 0.0
-    assert result.factors[0].timing["walk_forward_evaluation_seconds"] >= 0.0
     assert result.factors[0].timing["report_and_library_seconds"] >= 0.0
     assert result.factors[0].timing["total_seconds"] >= 0.0
     assert all(factor.library_entry_stored is False for factor in result.factors)
-    assert "unstable_ic" in result.factors[0].failure_reasons
 
     momentum_report = workspace.reports_dir / "momentum__BTCUSDT.json"
     contrarian_report = workspace.reports_dir / "contrarian__BTCUSDT.json"
     assert momentum_report.exists()
     assert contrarian_report.exists()
     assert json.loads(momentum_report.read_text(encoding="utf-8"))["symbol"] == "BTCUSDT"
-    assert json.loads(contrarian_report.read_text(encoding="utf-8"))["gate_outcome"]["status"] == "rejected"
+    assert json.loads(contrarian_report.read_text(encoding="utf-8"))["gate_outcome"]["status"] == "candidate"
 
     library = load_candidate_factor_library(workspace.candidate_library_path)
     assert library["entries"] == []
@@ -140,21 +107,6 @@ def test_batch_runner_stores_effective_factor_for_the_symbol_that_passed(tmp_pat
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
-    walk_forward_settings = {
-        "train_window": "2min",
-        "validation_window": "2min",
-        "test_window": "2min",
-        "step": "2min",
-    }
-    evaluation_grid = [
-        {
-            "action": "spot_long",
-            "threshold_quantile": 0.0,
-            "holding_horizon": "1min",
-            "leverage": 1.0,
-        }
-    ]
     workspace = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_symbol_specific",
@@ -162,32 +114,25 @@ def test_batch_runner_stores_effective_factor_for_the_symbol_that_passed(tmp_pat
             "feature_data": ["fixture_spot_1m_ohlcv"],
             "pnl_data": ["fixture_spot_1m_ohlcv"],
         },
-        candidate_horizons=["1min"],
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
     )
 
     result = run_supplied_factor_callables(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factors=[("momentum", "tests.factors.momentum", lambda data: data["close"])],
         candidate_horizon="1min",
-        evaluation_grid=evaluation_grid,
-        walk_forward_settings=walk_forward_settings,
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )
 
+    # New paradigm: all non-failed factors are "candidate" (placeholder)
     assert [(factor.symbol, factor.gate_status) for factor in result.factors] == [
-        ("BTCUSDT", "strong"),
-        ("ETHUSDT", "rejected"),
+        ("BTCUSDT", "candidate"),
+        ("ETHUSDT", "candidate"),
     ]
+    # Library storage is deferred to iteration 2
     library = load_candidate_factor_library(workspace.candidate_library_path)
-    assert len(library["entries"]) == 1
-    assert library["entries"][0]["factor_name"] == "momentum"
-    assert library["entries"][0]["symbol"] == "BTCUSDT"
-    assert library["entries"][0]["report_reference"] == "reports/momentum__BTCUSDT.json"
+    assert len(library["entries"]) == 0
 
 
 def test_batch_runner_captures_failed_callable_diagnostics_and_continues(tmp_path):
@@ -214,28 +159,12 @@ def test_batch_runner_captures_failed_callable_diagnostics_and_continues(tmp_pat
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
     workspace = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_001",
         crypto_data_universe={
             "feature_data": ["fixture_spot_1m_ohlcv"],
             "pnl_data": ["fixture_spot_1m_ohlcv"],
-        },
-        candidate_horizons=["1min"],
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
         },
     )
 
@@ -245,26 +174,11 @@ def test_batch_runner_captures_failed_callable_diagnostics_and_continues(tmp_pat
     result = run_supplied_factor_callables(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factors=[
             ("broken", "tests.factors.broken", broken_factor),
             ("momentum", "tests.factors.momentum", lambda data: data["close"]),
         ],
         candidate_horizon="1min",
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
-        },
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )
@@ -316,28 +230,12 @@ def test_batch_runner_rejects_future_dependent_factor_when_lookback_is_configure
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
     workspace = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_lookahead",
         crypto_data_universe={
             "feature_data": ["fixture_spot_1m_ohlcv"],
             "pnl_data": ["fixture_spot_1m_ohlcv"],
-        },
-        candidate_horizons=["1min"],
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
         },
     )
 
@@ -347,23 +245,8 @@ def test_batch_runner_rejects_future_dependent_factor_when_lookback_is_configure
     result = run_supplied_factor_callables(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factors=[("leaky", "tests.factors.leaky", future_close)],
         candidate_horizon="1min",
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
-        },
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         input_lookback_window="2min",
@@ -399,28 +282,12 @@ def test_batch_runner_keeps_generated_factor_artifacts_inside_workspace_dirs(tmp
         )
     )
     feature_panel = CryptoPanel(data=panel_data, data_role="feature")
-    pnl_panel = CryptoPanel(data=panel_data, data_role="pnl", data_product="spot")
     workspace = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_001",
         crypto_data_universe={
             "feature_data": ["fixture_spot_1m_ohlcv"],
             "pnl_data": ["fixture_spot_1m_ohlcv"],
-        },
-        candidate_horizons=["1min"],
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
         },
     )
 
@@ -430,25 +297,10 @@ def test_batch_runner_keeps_generated_factor_artifacts_inside_workspace_dirs(tmp
     result = run_supplied_factor_callables(
         workspace=workspace,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         factors=[
             ("../escape", "tests.factors.escape", broken_factor),
         ],
         candidate_horizon="1min",
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "1min",
-            "validation_window": "1min",
-            "test_window": "1min",
-            "step": "1min",
-        },
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
     )

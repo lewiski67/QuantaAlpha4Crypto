@@ -28,22 +28,7 @@ def test_crypto_mining_cli_runs_fake_local_round_from_config(tmp_path):
                     "feature_data": ["fixture_spot_1m_ohlcv"],
                     "pnl_data": ["fixture_spot_1m_ohlcv"],
                 },
-                "candidate_horizons": ["1min"],
                 "candidate_horizon": "1min",
-                "evaluation_grid": [
-                    {
-                        "action": "spot_long",
-                        "threshold_quantile": 0.8,
-                        "holding_horizon": "1min",
-                        "leverage": 1.0,
-                    }
-                ],
-                "walk_forward_settings": {
-                    "train_window": "1min",
-                    "validation_window": "1min",
-                    "test_window": "1min",
-                    "step": "1min",
-                },
                 "feature_data_dependencies": ["fixture_spot_1m_ohlcv"],
                 "pnl_data_dependencies": ["fixture_spot_1m_ohlcv"],
                 "max_repair_attempts": 1,
@@ -115,22 +100,7 @@ def test_crypto_mining_cli_main_accepts_fire_style_keyword_arguments(tmp_path):
                     "feature_data": ["fixture_spot_1m_ohlcv"],
                     "pnl_data": ["fixture_spot_1m_ohlcv"],
                 },
-                "candidate_horizons": ["1min"],
                 "candidate_horizon": "1min",
-                "evaluation_grid": [
-                    {
-                        "action": "spot_long",
-                        "threshold_quantile": 0.8,
-                        "holding_horizon": "1min",
-                        "leverage": 1.0,
-                    }
-                ],
-                "walk_forward_settings": {
-                    "train_window": "1min",
-                    "validation_window": "1min",
-                    "test_window": "1min",
-                    "step": "1min",
-                },
                 "feature_data_dependencies": ["fixture_spot_1m_ohlcv"],
                 "pnl_data_dependencies": ["fixture_spot_1m_ohlcv"],
                 "max_repair_attempts": 1,
@@ -203,22 +173,7 @@ def test_crypto_mining_original_flow_cli_runs_fake_provider_with_binance_adapter
                 },
                 "provider": "fake",
                 "repair_provider": "fake",
-                "candidate_horizons": ["1min"],
                 "candidate_horizon": "1min",
-                "evaluation_grid": [
-                    {
-                        "action": "spot_long",
-                        "threshold_quantile": 0.8,
-                        "holding_horizon": "1min",
-                        "leverage": 1.0,
-                    }
-                ],
-                "walk_forward_settings": {
-                    "train_window": "1min",
-                    "validation_window": "1min",
-                    "test_window": "1min",
-                    "step": "1min",
-                },
                 "input_lookback_window": "4h",
                 "update_frequency": "15min",
                 "rebalance_frequency": "1h",
@@ -234,11 +189,11 @@ def test_crypto_mining_original_flow_cli_runs_fake_provider_with_binance_adapter
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["mining_round"]["status"] == "completed"
     assert manifest["proposal_runs"][0]["context"]["input_lookback_window"] == "4h"
-    assert manifest["proposal_runs"][0]["context"]["update_frequency"] == "15min"
-    assert manifest["proposal_runs"][0]["context"]["rebalance_frequency"] == "1h"
     assert (run_dir / "candidate_factors.json").exists()
     momentum_report = json.loads((run_dir / "reports" / "momentum__BTCUSDT.json").read_text(encoding="utf-8"))
-    assert momentum_report["walk_forward_windows"][0]["train_trials"][0]["fee"] > 0
+    # New paradigm: report has ic/rank_ic instead of walk_forward_windows
+    assert "ic" in momentum_report
+    assert "rank_ic" in momentum_report
 
 
 def test_pyproject_exposes_standalone_crypto_cli():
@@ -261,22 +216,7 @@ def test_real_smoke_cli_requires_explicit_live_llm_allowance(tmp_path):
                 },
                 "provider": "anthropic",
                 "repair_provider": "anthropic",
-                "candidate_horizons": ["1min"],
                 "candidate_horizon": "1min",
-                "evaluation_grid": [
-                    {
-                        "action": "spot_long",
-                        "threshold_quantile": 0.8,
-                        "holding_horizon": "1min",
-                        "leverage": 1.0,
-                    }
-                ],
-                "walk_forward_settings": {
-                    "train_window": "1min",
-                    "validation_window": "1min",
-                    "test_window": "1min",
-                    "step": "1min",
-                },
                 "input_lookback_window": "4h",
                 "update_frequency": "15min",
                 "rebalance_frequency": "1h",
@@ -303,22 +243,7 @@ def test_real_smoke_cli_rejects_non_anthropic_config_before_live_call(tmp_path):
                 },
                 "provider": "fake",
                 "repair_provider": "fake",
-                "candidate_horizons": ["1min"],
                 "candidate_horizon": "1min",
-                "evaluation_grid": [
-                    {
-                        "action": "spot_long",
-                        "threshold_quantile": 0.8,
-                        "holding_horizon": "1min",
-                        "leverage": 1.0,
-                    }
-                ],
-                "walk_forward_settings": {
-                    "train_window": "1min",
-                    "validation_window": "30min",
-                    "test_window": "30min",
-                    "step": "30min",
-                },
                 "input_lookback_window": "4h",
                 "update_frequency": "15min",
                 "rebalance_frequency": "1h",

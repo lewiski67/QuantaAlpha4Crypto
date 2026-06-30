@@ -89,16 +89,13 @@ def main(
         _validate_config(config_payload)
         proposal_provider = _build_proposal_provider(config_payload)
         repair_provider = _build_repair_provider(config_payload)
-        feature_panel, pnl_panel = _build_fixture_panels(config_payload)
+        feature_panel = _build_fixture_panel(config_payload)
         result = run_local_crypto_mining_round(
             config=CryptoMiningRoundConfig(
                 output_dir=output_dir,
                 run_id=config_payload["run_id"],
                 crypto_data_universe=config_payload["crypto_data_universe"],
-                candidate_horizons=config_payload["candidate_horizons"],
                 candidate_horizon=config_payload["candidate_horizon"],
-                evaluation_grid=config_payload["evaluation_grid"],
-                walk_forward_settings=config_payload["walk_forward_settings"],
                 feature_data_dependencies=config_payload["feature_data_dependencies"],
                 pnl_data_dependencies=config_payload["pnl_data_dependencies"],
                 max_repair_attempts=config_payload["max_repair_attempts"],
@@ -106,7 +103,6 @@ def main(
             proposal_provider=proposal_provider,
             repair_provider=repair_provider,
             feature_panel=feature_panel,
-            pnl_panel=pnl_panel,
         )
     except Exception as error:
         print(f"Invalid crypto mining config: {error}", file=sys.stderr)
@@ -138,14 +134,15 @@ def original_flow_main(
         started_at = perf_counter()
         _print_progress("data_load_start")
         panel_data = load_binance_crypto_panel_data(run_config.data_adapter)
-        _print_progress(f"data_load_done {perf_counter() - started_at:.3f}s rows={len(panel_data.feature_panel.data)}")
+        _print_progress(
+            f"data_load_done {perf_counter() - started_at:.3f}s rows={len(panel_data.feature_panel.data)}"
+        )
         _print_progress("mining_round_start")
         result = run_local_crypto_mining_round(
             config=run_config.to_local_round_config(),
             proposal_provider=proposal_provider,
             repair_provider=repair_provider,
             feature_panel=panel_data.feature_panel,
-            pnl_panel=panel_data.pnl_panel,
             progress_callback=_print_progress,
         )
         _print_progress("mining_round_done")
@@ -219,10 +216,7 @@ def _validate_config(config: dict[str, Any]) -> None:
     required_fields = [
         "run_id",
         "crypto_data_universe",
-        "candidate_horizons",
         "candidate_horizon",
-        "evaluation_grid",
-        "walk_forward_settings",
         "feature_data_dependencies",
         "pnl_data_dependencies",
         "max_repair_attempts",
@@ -272,7 +266,7 @@ def _anthropic_thinking(config: dict[str, Any]) -> dict[str, Any] | None:
     return DEFAULT_ANTHROPIC_THINKING
 
 
-def _build_fixture_panels(config: dict[str, Any]) -> tuple[CryptoPanel, CryptoPanel]:
+def _build_fixture_panel(config: dict[str, Any]) -> CryptoPanel:
     if config.get("fixture") != "deterministic_spot_1m":
         raise ValueError("only fixture='deterministic_spot_1m' is supported by the local crypto mining CLI.")
     panel_data = build_crypto_panel(
@@ -297,10 +291,7 @@ def _build_fixture_panels(config: dict[str, Any]) -> tuple[CryptoPanel, CryptoPa
             ]
         )
     )
-    return (
-        CryptoPanel(data=panel_data, data_role="feature"),
-        CryptoPanel(data=panel_data, data_role="pnl", data_product="spot"),
-    )
+    return CryptoPanel(data=panel_data, data_role="feature")
 
 
 if __name__ == "__main__":

@@ -13,21 +13,6 @@ def test_crypto_factor_workspace_creates_manifest_and_artifact_paths(tmp_path):
             "feature_data": ["binance_spot_1m_ohlcv"],
             "pnl_data": ["binance_futures_1m_mark"],
         },
-        candidate_horizons=["1min", "15min"],
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "180D",
-            "validation_window": "30D",
-            "test_window": "30D",
-            "step": "30D",
-        },
     )
 
     assert workspace.root == tmp_path / "run_001"
@@ -51,21 +36,6 @@ def test_crypto_factor_workspace_creates_manifest_and_artifact_paths(tmp_path):
             "feature_data": ["binance_spot_1m_ohlcv"],
             "pnl_data": ["binance_futures_1m_mark"],
         },
-        "candidate_horizons": ["1min", "15min"],
-        "evaluation_grid": [
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        "walk_forward_settings": {
-            "train_window": "180D",
-            "validation_window": "30D",
-            "test_window": "30D",
-            "step": "30D",
-        },
         "artifact_paths": {
             "reports_dir": "reports",
             "rejected_dir": "rejected",
@@ -81,17 +51,11 @@ def test_crypto_factor_workspace_creation_is_deterministic(tmp_path):
         output_dir=tmp_path,
         run_id="run_001",
         crypto_data_universe={"feature_data": [], "pnl_data": []},
-        candidate_horizons=[],
-        evaluation_grid=[],
-        walk_forward_settings={},
     )
     second = create_crypto_factor_workspace(
         output_dir=tmp_path,
         run_id="run_001",
         crypto_data_universe={"feature_data": [], "pnl_data": []},
-        candidate_horizons=[],
-        evaluation_grid=[],
-        walk_forward_settings={},
     )
 
     assert first == second
@@ -106,7 +70,4 @@ def test_crypto_factor_workspace_rejects_run_id_path_traversal(tmp_path):
             output_dir=tmp_path,
             run_id="../escape",
             crypto_data_universe={"feature_data": [], "pnl_data": []},
-            candidate_horizons=[],
-            evaluation_grid=[],
-            walk_forward_settings={},
         )

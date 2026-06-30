@@ -3,21 +3,13 @@ from __future__ import annotations
 import json
 import re
 from hashlib import sha1
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable
 
 from quantaalpha_crypto.evaluation.factor import FactorCallable, evaluate_directional_factor
-from quantaalpha_crypto.evaluation.gates import evaluate_factor_gates
-from quantaalpha_crypto.evaluation.grid import EvaluationGridItem, PnlPanelInput
-from quantaalpha_crypto.evaluation.library import append_candidate_factor_library_entry
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
-from quantaalpha_crypto.evaluation.report import FactorEvaluationReport, build_factor_evaluation_report
-from quantaalpha_crypto.evaluation.walk_forward import (
-    build_walk_forward_windows,
-    evaluate_walk_forward,
-)
 from quantaalpha_crypto.mining._utils import _progress
 from quantaalpha_crypto.mining.workspace import CryptoFactorWorkspace
 
@@ -57,36 +49,15 @@ class RejectedFactorDiagnostic:
 def run_supplied_factor_callables(
     workspace: CryptoFactorWorkspace,
     feature_panel: CryptoPanel,
-    pnl_panel: PnlPanelInput,
     factors: list[SuppliedFactorCallable],
     candidate_horizon: str,
-    evaluation_grid: list[EvaluationGridItem],
-    walk_forward_settings: dict[str, Any],
     feature_data_dependencies: list[str],
     pnl_data_dependencies: list[str],
     input_lookback_window: str | None = None,
-    update_frequency: str | None = None,
-    rebalance_frequency: str | None = None,
-    fee_rate: float = 0.0,
-    cost_source: str = "fallback",
     progress_callback: Callable[[str], None] | None = None,
 ) -> BatchFactorRunResult:
     """Evaluate supplied Directional Factors through the crypto evaluation core."""
     results = []
-    evaluation_grid = _grid_with_timing(
-        evaluation_grid,
-        update_frequency=update_frequency,
-        rebalance_frequency=rebalance_frequency,
-    )
-    start, end = _panel_time_bounds(feature_panel)
-    windows = build_walk_forward_windows(
-        start=start,
-        end=end,
-        train_window=walk_forward_settings["train_window"],
-        validation_window=walk_forward_settings["validation_window"],
-        test_window=walk_forward_settings["test_window"],
-        step=walk_forward_settings["step"],
-    )
 
     for factor_name, factor_reference, factor in factors:
         for symbol in _panel_symbols(feature_panel):
@@ -94,7 +65,6 @@ def run_supplied_factor_callables(
             factor_started_at = perf_counter()
             timing: dict[str, float] = {}
             symbol_feature_panel = _slice_crypto_panel(feature_panel, symbol)
-            symbol_pnl_panel = _slice_pnl_panel(pnl_panel, symbol)
             try:
                 stage_started_at = perf_counter()
                 factor_evaluation = evaluate_directional_factor(
@@ -104,39 +74,34 @@ def run_supplied_factor_callables(
                     input_lookback_window=input_lookback_window,
                 )
                 timing["factor_execution_seconds"] = _elapsed_seconds(stage_started_at)
-                _progress(progress_callback, f"factor_execution_done {factor_name} symbol={symbol} {timing['factor_execution_seconds']}s")
+                _progress(
+                    progress_callback,
+                    f"factor_execution_done {factor_name} symbol={symbol} {timing['factor_execution_seconds']}s",
+                )
                 stage_started_at = perf_counter()
-                _progress(progress_callback, f"walk_forward_start {factor_name} symbol={symbol}")
-                walk_forward_result = evaluate_walk_forward(
-                    factor_evaluation=factor_evaluation,
-                    pnl_panel=symbol_pnl_panel,
-                    grid=evaluation_grid,
-                    windows=windows,
-                    fee_rate=fee_rate,
-                    cost_source=cost_source,
-                )
-                timing["walk_forward_evaluation_seconds"] = _elapsed_seconds(stage_started_at)
-                _progress(progress_callback, f"walk_forward_done {factor_name} symbol={symbol} {timing['walk_forward_evaluation_seconds']}s")
-                stage_started_at = perf_counter()
-                gate_result = evaluate_factor_gates(
-                    factor_evaluation=factor_evaluation,
-                    walk_forward_result=walk_forward_result,
-                )
-                report = build_factor_evaluation_report(
-                    factor_name=factor_name,
-                    factor_evaluation=factor_evaluation,
-                    walk_forward_result=walk_forward_result,
-                    gate_result=gate_result,
-                    feature_data_dependencies=feature_data_dependencies,
-                    pnl_data_dependencies=pnl_data_dependencies,
-                    symbol=symbol,
-                )
                 report_reference = _artifact_reference(workspace, "reports", f"{factor_name}__{symbol}")
-                _write_report(workspace.root / report_reference, report)
+                _write_report(
+                    workspace.root / report_reference,
+                    {
+                        "artifact_type": "factor_evaluation_report",
+                        "factor_name": factor_name,
+                        "symbol": symbol,
+                        "horizon": str(factor_evaluation.horizon),
+                        "ic": float(factor_evaluation.ic),
+                        "rank_ic": float(factor_evaluation.rank_ic),
+                        "feature_data_dependencies": list(feature_data_dependencies),
+                        "pnl_data_dependencies": list(pnl_data_dependencies),
+                        "gate_outcome": {"status": "candidate"},
+                        "live_strategy": False,
+                    },
+                )
                 timing["report_and_library_seconds"] = _elapsed_seconds(stage_started_at)
             except Exception as error:
                 timing["total_seconds"] = _elapsed_seconds(factor_started_at)
-                _progress(progress_callback, f"factor_failed {factor_name} symbol={symbol} {type(error).__name__}")
+                _progress(
+                    progress_callback,
+                    f"factor_failed {factor_name} symbol={symbol} {type(error).__name__}",
+                )
                 diagnostic_reference = _artifact_reference(workspace, "rejected", f"{factor_name}__{symbol}")
                 _write_diagnostic(
                     workspace.root / diagnostic_reference,
@@ -165,32 +130,19 @@ def run_supplied_factor_callables(
                 )
                 continue
 
-            library_entry_stored = False
-            if gate_result.status != "rejected":
-                stage_started_at = perf_counter()
-                append_candidate_factor_library_entry(
-                    library_path=workspace.candidate_library_path,
-                    factor_callable_reference=factor_reference,
-                    report_reference=report_reference,
-                    report=report,
-                    gate_result=gate_result,
-                    candidate_horizons=[candidate_horizon],
-                    evaluation_grid=evaluation_grid,
-                    walk_forward_settings=walk_forward_settings,
-                )
-                timing["report_and_library_seconds"] += _elapsed_seconds(stage_started_at)
-                library_entry_stored = True
-
             timing["total_seconds"] = _elapsed_seconds(factor_started_at)
-            _progress(progress_callback, f"factor_done {factor_name} symbol={symbol} {gate_result.status} {timing['total_seconds']}s")
+            _progress(
+                progress_callback,
+                f"factor_done {factor_name} symbol={symbol} candidate {timing['total_seconds']}s",
+            )
             results.append(
                 BatchFactorResult(
                     factor_name=factor_name,
                     factor_callable_reference=factor_reference,
                     report_reference=report_reference,
-                    gate_status=gate_result.status,
-                    failure_reasons=list(gate_result.failure_reasons),
-                    library_entry_stored=library_entry_stored,
+                    gate_status="candidate",
+                    failure_reasons=[],
+                    library_entry_stored=False,
                     symbol=symbol,
                     diagnostic_reference=None,
                     timing=timing,
@@ -198,22 +150,6 @@ def run_supplied_factor_callables(
             )
 
     return BatchFactorRunResult(factors=results)
-
-
-def _grid_with_timing(
-    evaluation_grid: list[EvaluationGridItem],
-    update_frequency: str | None,
-    rebalance_frequency: str | None,
-) -> list[EvaluationGridItem]:
-    timed_grid = []
-    for item in evaluation_grid:
-        timed_item: EvaluationGridItem = dict(item)
-        if update_frequency is not None and "update_frequency" not in timed_item:
-            timed_item["update_frequency"] = update_frequency
-        if rebalance_frequency is not None and "rebalance_frequency" not in timed_item:
-            timed_item["rebalance_frequency"] = rebalance_frequency
-        timed_grid.append(timed_item)
-    return timed_grid
 
 
 def _panel_time_bounds(panel: CryptoPanel) -> tuple[Any, Any]:
@@ -236,15 +172,6 @@ def _slice_crypto_panel(panel: CryptoPanel, symbol: str) -> CryptoPanel:
     )
 
 
-def _slice_pnl_panel(pnl_panel: PnlPanelInput, symbol: str) -> PnlPanelInput:
-    if isinstance(pnl_panel, CryptoPanel):
-        return _slice_crypto_panel(pnl_panel, symbol)
-    return {
-        product: _slice_crypto_panel(product_panel, symbol)
-        for product, product_panel in pnl_panel.items()
-    }
-
-
 def _artifact_reference(workspace: CryptoFactorWorkspace, directory: str, factor_name: str) -> str:
     artifact_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", factor_name).strip("._-")
     if not artifact_stem:
@@ -259,17 +186,17 @@ def _artifact_reference(workspace: CryptoFactorWorkspace, directory: str, factor
     return reference
 
 
-def _write_report(path: Path, report: FactorEvaluationReport) -> None:
+def _write_report(path: Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
-        json.dump(asdict(report), file, indent=2, sort_keys=True)
+        json.dump(report, file, indent=2, sort_keys=True)
         file.write("\n")
 
 
 def _write_diagnostic(path: Path, diagnostic: RejectedFactorDiagnostic) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
-        json.dump(asdict(diagnostic), file, indent=2, sort_keys=True)
+        json.dump(diagnostic.__dict__, file, indent=2, sort_keys=True)
         file.write("\n")
 
 

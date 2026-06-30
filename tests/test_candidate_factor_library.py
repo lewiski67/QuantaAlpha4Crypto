@@ -19,21 +19,6 @@ def test_candidate_factor_library_stores_candidate_gate_pass_with_report_and_gat
         report_reference="reports/close_momentum.json",
         report=_report(gate_status="candidate"),
         gate_result=_gate_result(status="candidate", test_sharpe=0.9),
-        candidate_horizons=["1min"],
-        evaluation_grid=[
-            {
-                "action": "spot_long",
-                "threshold_quantile": 0.8,
-                "holding_horizon": "1min",
-                "leverage": 1.0,
-            }
-        ],
-        walk_forward_settings={
-            "train_window": "180D",
-            "validation_window": "30D",
-            "test_window": "30D",
-            "step": "30D",
-        },
     )
 
     assert entry is not None
@@ -59,9 +44,6 @@ def test_candidate_factor_library_stores_candidate_gate_pass_with_report_and_gat
     assert stored["entries"][0]["gate_status"] == "candidate"
     assert stored["entries"][0]["feature_data_dependencies"] == ["binance_spot_1m_ohlcv"]
     assert stored["entries"][0]["pnl_data_dependencies"] == ["binance_spot_1m_ohlcv"]
-    assert stored["entries"][0]["candidate_horizons"] == ["1min"]
-    assert stored["entries"][0]["evaluation_grid"][0]["action"] == "spot_long"
-    assert stored["entries"][0]["walk_forward_settings"]["train_window"] == "180D"
     assert stored["entries"][0]["live_strategy"] is False
     assert "live strategy" not in json.dumps(stored).lower()
 
@@ -75,9 +57,6 @@ def test_candidate_factor_library_marks_strong_gate_pass_distinctly(tmp_path):
         report_reference="reports/close_momentum.json",
         report=_report(gate_status="strong"),
         gate_result=_gate_result(status="strong", test_sharpe=1.3),
-        candidate_horizons=["1min"],
-        evaluation_grid=[],
-        walk_forward_settings={},
     )
 
     assert entry is not None
@@ -95,9 +74,6 @@ def test_candidate_factor_library_rejects_rejected_gate_results(tmp_path):
             report_reference="reports/close_momentum.json",
             report=_report(gate_status="rejected"),
             gate_result=_gate_result(status="rejected", test_sharpe=0.2),
-            candidate_horizons=["1min"],
-            evaluation_grid=[],
-            walk_forward_settings={},
         )
 
     assert load_candidate_factor_library(library_path)["entries"] == []

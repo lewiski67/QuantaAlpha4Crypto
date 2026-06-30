@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from quantaalpha_crypto.evaluation.grid import EvaluationGridItem, PnlPanelInput
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
 from quantaalpha_crypto.mining._utils import _progress, _redact_secrets
 from quantaalpha_crypto.mining.batch_runner import BatchFactorRunResult
@@ -22,18 +21,11 @@ class CryptoMiningRoundConfig:
     output_dir: str | Path
     run_id: str
     crypto_data_universe: dict[str, Any]
-    candidate_horizons: list[str]
     candidate_horizon: str
-    evaluation_grid: list[EvaluationGridItem]
-    walk_forward_settings: dict[str, Any]
     feature_data_dependencies: list[str]
     pnl_data_dependencies: list[str]
     max_repair_attempts: int
     input_lookback_window: str | None = None
-    update_frequency: str | None = None
-    rebalance_frequency: str | None = None
-    fee_rate: float = 0.0
-    cost_source: str = "fallback"
     research_direction: str | None = None
 
 
@@ -48,7 +40,6 @@ def run_local_crypto_mining_round(
     proposal_provider: FactorProposalProvider,
     repair_provider: FactorRepairProvider,
     feature_panel: CryptoPanel,
-    pnl_panel: PnlPanelInput,
     previous_round_feedback: dict[str, Any] | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> CryptoMiningRoundResult:
@@ -57,9 +48,6 @@ def run_local_crypto_mining_round(
         output_dir=config.output_dir,
         run_id=config.run_id,
         crypto_data_universe=config.crypto_data_universe,
-        candidate_horizons=config.candidate_horizons,
-        evaluation_grid=config.evaluation_grid,
-        walk_forward_settings=config.walk_forward_settings,
     )
     _progress(progress_callback, f"workspace_created {workspace.root}")
     batch_result = run_factor_proposal_provider_with_repair(
@@ -68,17 +56,10 @@ def run_local_crypto_mining_round(
         repair_provider=repair_provider,
         max_repair_attempts=config.max_repair_attempts,
         feature_panel=feature_panel,
-        pnl_panel=pnl_panel,
         candidate_horizon=config.candidate_horizon,
-        evaluation_grid=config.evaluation_grid,
-        walk_forward_settings=config.walk_forward_settings,
         feature_data_dependencies=config.feature_data_dependencies,
         pnl_data_dependencies=config.pnl_data_dependencies,
         input_lookback_window=config.input_lookback_window,
-        update_frequency=config.update_frequency,
-        rebalance_frequency=config.rebalance_frequency,
-        fee_rate=config.fee_rate,
-        cost_source=config.cost_source,
         research_direction=config.research_direction,
         previous_round_feedback=previous_round_feedback,
         progress_callback=progress_callback,
@@ -147,12 +128,12 @@ def _batch_timing_summary(batch_result: BatchFactorRunResult) -> dict[str, float
 
 
 def build_round_feedback_context(workspace: CryptoFactorWorkspace) -> dict[str, Any]:
-    """Build secret-safe Cost-aware Mining Feedback for a later proposal round."""
+    """Build secret-safe Mining Feedback for a later proposal round."""
     manifest = json.loads(workspace.manifest_path.read_text(encoding="utf-8"))
     mining_round = manifest.get("mining_round", {})
     factor_results = mining_round.get("factor_results", [])
     feedback = {
-        "artifact_type": "cost_aware_mining_feedback",
+        "artifact_type": "mining_feedback",
         "source_run_id": workspace.root.name,
         "result_counts": dict(mining_round.get("result_counts", {})),
         "lifecycle_counts": _lifecycle_counts(manifest),
@@ -163,7 +144,6 @@ def build_round_feedback_context(workspace: CryptoFactorWorkspace) -> dict[str, 
             _portfolio_feedback_item(workspace, item)
             for item in manifest.get("portfolio_backtests", [])
         ],
-        "cost_aware_metric_preference": "cost_adjusted",
         "live_strategy": False,
     }
     for result in factor_results:
@@ -211,27 +191,18 @@ def _factor_feedback_item(
     report_reference = result.get("report_reference")
     if report_reference is not None:
         report = json.loads((workspace.root / report_reference).read_text(encoding="utf-8"))
-        item["cost_adjusted_metrics"] = _cost_adjusted_metrics(report)
+        item["ic_metrics"] = {
+            "ic": report.get("ic"),
+            "rank_ic": report.get("rank_ic"),
+            "horizon": report.get("horizon"),
+        }
         item["gate_outcome"] = report.get("gate_outcome", {})
     diagnostic_reference = result.get("diagnostic_reference")
     if diagnostic_reference is not None:
-        item["diagnostic"] = json.loads((workspace.root / diagnostic_reference).read_text(encoding="utf-8"))
+        item["diagnostic"] = json.loads(
+            (workspace.root / diagnostic_reference).read_text(encoding="utf-8")
+        )
     return item
-
-
-def _cost_adjusted_metrics(report: dict[str, Any]) -> dict[str, Any]:
-    test_metrics = [
-        window.get("test_metrics")
-        for window in report.get("walk_forward_windows", [])
-        if window.get("test_metrics") is not None
-    ]
-    return {
-        "metric_basis": "net_after_cost",
-        "test_net_return": sum(metric.get("net_return", 0.0) for metric in test_metrics),
-        "test_sharpe": report.get("gate_outcome", {}).get("test_sharpe"),
-        "cost_summary": report.get("cost_summary", {}),
-        "risk_summary": report.get("risk_summary", {}),
-    }
 
 
 def _portfolio_feedback_item(
@@ -249,5 +220,3 @@ def _portfolio_feedback_item(
         "cost_breakdown": payload.get("cost_breakdown", {}),
         "live_strategy": False,
     }
-
-
