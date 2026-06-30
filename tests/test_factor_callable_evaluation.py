@@ -51,7 +51,7 @@ def test_evaluate_directional_factor_aligns_scores_with_forward_returns():
     def close_score(data):
         return data["close"]
 
-    result = evaluate_directional_factor(panel, close_score, horizon="1min")
+    result = evaluate_directional_factor(panel, close_score, horizon="1min", execution_lag_bars=0)
 
     assert result.scores.index.tolist() == [
         (pd.Timestamp("2026-01-01 00:00:00"), "BTCUSDT"),
@@ -104,7 +104,7 @@ def test_evaluate_directional_factor_reports_basic_ic_evidence():
     )
     panel = CryptoPanel(data=build_crypto_panel(raw), data_role="feature")
 
-    result = evaluate_directional_factor(panel, lambda data: data["close"], horizon="1min")
+    result = evaluate_directional_factor(panel, lambda data: data["close"], horizon="1min", execution_lag_bars=0)
 
     assert result.ic == pytest.approx(1.0)
     assert result.rank_ic == pytest.approx(1.0)
@@ -213,9 +213,70 @@ def test_evaluate_directional_factor_accepts_trailing_window_scores():
         trailing_mean,
         horizon="1min",
         input_lookback_window="2min",
+        execution_lag_bars=0,
     )
 
     assert result.scores.tolist() == pytest.approx([100.0, 100.5, 101.5])
+
+
+def _make_panel(rows: list[tuple[str, float]], symbol: str = "BTCUSDT") -> CryptoPanel:
+    raw = pd.DataFrame(
+        [
+            {
+                "timestamp": ts,
+                "symbol": symbol,
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+                "volume": 10,
+            }
+            for ts, price in rows
+        ]
+    )
+    return CryptoPanel(data=build_crypto_panel(raw), data_role="feature")
+
+
+def test_execution_lag_entry_is_next_bar_close():
+    # lag=1: signal at t0 → enter at t1(50) → exit at t2(200) → return +3.0
+    # last two bars have no valid entry+exit pair → dropped
+    panel = _make_panel([
+        ("2026-01-01 00:00:00", 100.0),
+        ("2026-01-01 00:01:00", 50.0),
+        ("2026-01-01 00:02:00", 200.0),
+    ])
+
+    result = evaluate_directional_factor(
+        panel, lambda data: data["close"], horizon="1min", execution_lag_bars=1
+    )
+
+    assert result.forward_returns.index.get_level_values("timestamp").tolist() == [
+        pd.Timestamp("2026-01-01 00:00:00"),
+    ]
+    assert result.forward_returns.tolist() == pytest.approx([3.0])
+
+
+def test_execution_lag_gap_bar_yields_nan_not_wrong_exit():
+    # Bars: 00:00, 00:01, 00:03 (00:02 missing), 00:04; horizon=1min, lag=1
+    # t=00:00: entry=00:01, exit=00:02 → missing → NaN
+    # t=00:01: entry=00:03, exit=00:04 → valid → 400/200-1 = +1.0
+    # t=00:03: entry=00:04, exit=00:05 → missing → NaN
+    # A positional-only implementation would wrongly give t=00:00 return=+3.0
+    panel = _make_panel([
+        ("2026-01-01 00:00:00", 100.0),
+        ("2026-01-01 00:01:00", 50.0),
+        ("2026-01-01 00:03:00", 200.0),
+        ("2026-01-01 00:04:00", 400.0),
+    ])
+
+    result = evaluate_directional_factor(
+        panel, lambda data: data["close"], horizon="1min", execution_lag_bars=1
+    )
+
+    assert result.forward_returns.index.get_level_values("timestamp").tolist() == [
+        pd.Timestamp("2026-01-01 00:01:00"),
+    ]
+    assert result.forward_returns.tolist() == pytest.approx([1.0])
 
 
 def test_factor_input_audit_tolerates_floating_point_roundoff_only():

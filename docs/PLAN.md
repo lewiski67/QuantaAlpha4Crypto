@@ -1,0 +1,206 @@
+# QuantaAlpha 全生命周期计划（螺旋骨架 + 门控发布）
+
+_开始日期: 2026-06-30_
+
+## 方法论（按风险和可逆性分段）
+
+- **研究前段（迭代 0–4）→ 风险驱动螺旋。** 不逐层做完，而是先一根最薄的纵向
+  骨架穿到底，每个迭代消除当前最大的不确定性，且**始终保持端到端可跑**。研究
+  的核心是**快速证伪**——用最便宜的路径走到"此路不通"。
+- **评估核心 → 测试先行（TDD）。** t+1 对齐、purge/embargo、市场残差、NW t-stat
+  这些数值原语一旦写错会静默污染所有结论。先用已知答案的合成数据写测试，再写实现。
+- **部署后段（Phase D–F）→ 门控分批发布。** 真金不可逆。每道门标准**提前定死**，
+  不达标不放行。这一段要保守，不要速度。
+
+> 「天数」是工程工作量估计。**★RC 研究检查点是经验性硬门，无法排期**——跑不出
+> alpha 就停在那里迭代，可能数周到数月。任何把上线标成固定日期的计划都是自欺。
+
+每次迭代结束检查清单：
+1. `PYTHONPATH=. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -o cache_dir=/tmp/pytest_cache_quantaalpha tests -q` 全绿
+2. **端到端能跑出一个数**（不是某层单元通过就算）
+3. `git commit` + 更新 `docs/HANDOFF.md` + `git push`
+
+---
+
+## 研究前段：螺旋迭代
+
+每个迭代头部写明：**消除哪个不确定性 / 退出问题 / 端到端产物**。
+
+### 迭代 0 — 行走骨架（2–3 天）
+
+- **消除：** 数据流通不通？这套东西能不能对一个因子给出样本外预测判决？
+- **退出问题：** "一个因子，从 panel 到一个样本外 IC 数字，端到端跑通了吗？"
+- **刻意不做：** Base Factor Model、purge/embargo、市场中性、Trial Registry、
+  正交性、回测、循环、进化、数据扩展。全部砍掉。
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| 0.1 | t+1 执行对齐 | `evaluation/metrics.py`、`evaluation/factor.py` | 加执行间隔：t 出信号 → **t+1 进场** → 标签 `close[t+1+horizon]/close[t+1]-1`。改 `_forward_returns` 加 `execution_lag_bars=1` 参数，`evaluate_directional_factor` 透传；TDD 写测试锁住对齐语义 |
+| 0.2 | NW 自相关修正 t-stat（TDD） | `evaluation/metrics.py` | **先写测试**：合成正自相关序列 NW t-stat < naive；再写 `_nw_tstat` |
+| 0.3 | 单切分 IC 判决脚本 | `mining/loop.py`（最小） | 一个因子 → 单 train/test 切分 → IC + NW t-stat → 打印一个数 |
+
+**验收：** 跑一个手写因子，端到端打印出样本外 IC 与 NW t-stat。若信号与噪声无异，
+你已用 3 天而非 12 天逼近了"有没有 alpha 迹象"。
+
+### 迭代 1 — 让 IC 判决可信（~3 天）
+
+- **消除：** 这个 IC 是真信号，还是 look-ahead / 自相关 / 市场 beta 的假象？
+- **退出问题：** "样本外 IC 在去除前视、自相关膨胀、市场暴露后还站得住吗？"
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| 1.1 | walk-forward + purge/embargo（TDD） | `evaluation/walk_forward.py` | **先测**：purge 后训练/测试无重叠；`_make_windows(purge_bars=horizon, embargo_bars=0)` |
+| 1.2 | vol-norm + 市场残差标签（TDD） | `evaluation/metrics.py` | `_vol_norm_returns`、`_market_residual`（OLS） |
+| 1.3 | Base Factor Model | `evaluation/base_model.py` | BTC-proxy 市场、TSMOM(20)、波动率(20)、资金费率均值(8期)；`residualize(...)` |
+| 1.4 | IC 衰减曲线（计算层） | `evaluation/metrics.py` | `_decay_profile(scores, returns, horizons)`，horizon 是读出来的不是搜出来的。**`horizons` 网格取值未定**——业界无统一标准，须按 crypto 机制尺度自定（秒级→日级，够宽够密罩住经济上合理的整条带），这是必须自己拍的设计项 |
+| 1.5 | 多 horizon 评估编排 | `evaluation/factor.py` | `evaluate_directional_factor` 从单 horizon 升级为吃 `horizons` 网格、返回整条 profile 进 `FactorEvaluation`。**评估对象是整条曲线，不塌缩成单点** |
+
+**验收：** 同一因子在完整 walk-forward + 市场中性 + NW 修正下重跑，IC 判决是诚实的。
+此处可能直接证伪迭代 0 看到的"信号"——那也是有价值的结果。
+
+> **多 horizon 评估的纪律（贯穿 1.4/1.5 → 2.x）：** 评估**不是** max-over-horizon，
+> 也不是固定单 horizon。horizon 是**因子假设的一部分**，由经济机制事前声明；在网格上
+> 看整条衰减曲线，用**「连续宽带 vs 孤立尖峰」**区分真信号与噪声——超短端（1–5min）
+> 被微结构噪声压住、中长端一整片显著，正是真信号的标志性长相，不可因单点差而错杀。
+> 终审仍在迭代 4 的扣成本组合夏普（把 horizon 整合掉）。读出准则（带的连续性/显著性
+> 阈值）作为纯统计谓词落在 2.2。
+
+### 迭代 2 — 多重检验 + 库正交性（~3 天）
+
+- **消除：** 这个信号是真的，还是多重检验的运气 / 与已知因子冗余？
+- **退出问题：** "deflation 后仍显著，且对 Base Model + 现有库正交吗？"
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| 2.1 | Trial Registry | `evaluation/registry.py` | `register/count/load`，JSON Lines，记录**所有**候选含被拒。**记录事前 metadata：经济机制文本 + 声明 horizon**（审计 + deflation 计数用）。**衰减曲线扫的每个 horizon 计入 trials**——扫网格本身要付多重检验代价 |
+| 2.2 | Research Gate = 纯统计谓词 | `evaluation/gates.py` | 移除 Sharpe；接 NW t-stat + deflated p（`p*count`）+ ICIR 阈值。**加衰减带谓词**（连续宽带 + 显著性，对应 1.4/1.5 的读出准则）+ **声明 horizon vs 实测带一致性检查**（声明"8h 回归"却只在 5min 工作→机制不符，标记） |
+| 2.3 | 库存 Factor Return Stream + 增量 IC | `evaluation/library.py` | `add_factor(id, stream, meta)`→parquet；`incremental_ic(...)`；`is_orthogonal(0.05)`。**`meta` 存机制文本 + 声明 horizon**（审计） |
+| 2.4 | grid.py 标 DEPRECATED | `evaluation/grid.py` | 顶部 banner，保留文件免 import 崩 |
+
+**验收：** 完整 Research Gate 路径 NW-tstat deflation → orthogonality → accept/reject，
+全有测试。grid/threshold 搜索不再被调用。
+
+> **经济先验的归处（不要建模块）：** 经济先验**大部分不能代码化**，硬塞统计函数是假严谨。
+> 可代码化的只有两块：①**事前假设记录**——机制 + 声明 horizon 起源于 `mining/proposal.py`
+> （LLM 提因子时一并产出），作为 metadata 往下传，存档进 `registry.py`(2.1) 和 `library.py`(2.3)；
+> ②**机制-horizon 一致性检查**——声明 vs 实测带，纯统计，落在 `gates.py`(2.2)。
+> **「这是真机制还是事后编故事」的判断停在 RC 人工门**（见下方 Phase RC），不进代码。
+> **边界**：机制文本起源于 `mining/`，但 `evaluation/` 只把它当传入的 metadata + 做一致性
+> 检查，**绝不在 `evaluation/` 里调 LLM 做经济分析**（守 `CLAUDE.md` 的 evaluation 不调 LLM 铁律）。
+
+### 迭代 3 — 闭合挖因子循环（~3 天）
+
+- **消除：** 自动化提案能持续产出**正交**新因子，还是 LLM 反复提相关机制？
+- **退出问题：** "propose→evaluate→feedback 一轮能跑，且反馈把已覆盖方向挡掉吗？"
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| 3.1 | 循环协调器 | `mining/loop.py` | `run_discovery_loop(config, n_rounds)`：proposal→runner→Research Gate→library |
+| 3.2 | 正交性反馈注入 proposal | `mining/proposal.py` | 已入库 mechanism 摘要注入 LLM（"以下已覆盖，提正交方向"） |
+| 3.3 | 断开旧 grid 调用链 | `mining/batch_runner.py`、`mining/round.py` | 路由到新 Research Gate |
+| 3.4 | Loop smoke 测试 | `tests/test_mining_loop.py` | mock LLM 验证一轮完整路径 |
+| 3.5 | _(可选/可延后)_ 进化搜索 | `mining/evolution.py` | fitness=deflated incremental IR；niching；LLM 变异算子。设计文档 §3.12，**仅当搜索成瓶颈才做** |
+
+**验收：** CLI 跑 `run_discovery_loop` 多轮，库稳定增长，重复机制被反馈挡住。
+
+### 迭代 4 — 净成本现实检验（~4 天）
+
+- **消除：** 统计上显著的毛信号，扣完 Binance 成本后还净正、可交易吗？
+- **退出问题：** "过 Research Gate 的因子，组合后过 Trading Gate 吗？"
+- **为什么现在才上 NautilusTrader：** IC 证伪比回测便宜，毛信号先筛；这是 RC 的
+  第二次触碰（毛信号 → 净可交易性），与 Research/Trading 两层门的语义一致。
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| 4.1 | 连续加权 + 组合构建 | `evaluation/portfolio.py` | `rank_weight=(rank-0.5)/N`（无阈值）；`combine_factors`；`vol_scale(target_vol=0.15)` |
+| 4.2 | NautilusTrader 接入 | `quantaalpha_crypto/backtest/` | `FactorStrategy(Strategy)` signal→order，同对象 backtest+live；`costs.py` fees/slippage/funding；`runner.py` |
+| 4.3 | Trading Gate 谓词 | `evaluation/gates.py` | 输入回测输出，查 portfolio net Sharpe / max DD；与 Research Gate 分离 |
+| 4.4 | 端到端集成测试 | `tests/test_backtest_integration.py` | Research accept→backtest→Trading accept/reject 全路径 |
+| 4.5 | ADR-0014 | `docs/adr/` | NautilusTrader committed single engine |
+
+**验收：** 一个过 Research Gate 的因子，端到端跑到带成本的 portfolio Sharpe 判决。
+
+> **数据扩展（横切，按需插入任意迭代）：** `data.py` 接 OI / Long-Short Ratio；
+> feature/tradable universe 分离；自动拉取 Binance 历史数据脚本。某迭代需要才做。
+> **清理（持续）：** 删 `grid.py`、规范 `tests/` 文件名、提 `prompts.yaml`、删 README transition banner。
+
+---
+
+## ★ Phase RC — 研究检查点（硬门，开放式）
+
+**整个项目的真正瓶颈，不是工程。** 迭代 0–4 给了你能问 RC 的工具，RC 才回答有没有钱赚。
+
+- **做什么：** 配真实研究方向（`docs/research/`），多轮跑 `run_discovery_loop`，
+  积累 Factor Library，监控 Registry 计数与 deflated 显著性，过 Trading Gate 的入选。
+- **放行标准（提前定死，事后不许调低）：**
+  - ≥ **3–5 个互相正交**的因子，单独跑都过 Trading Gate（net-positive after cost）
+  - 组合后 walk-forward 样本外 Sharpe **跨窗口稳定**（不是单窗口幸运）
+  - 因子有经济先验解释，不是纯数据挖掘
+- **不通过：** 回研究方向迭代（新机制 / 新数据 / 新 universe），**不进 Phase D**。
+  诚实记录每次实验到 `docs/research/`。这个循环可能数周到数月。
+
+---
+
+## Phase D — 风险管理层（~5 天，RC 通过后）
+
+| # | 任务 | 文件 | 说明 |
+|---|------|------|------|
+| D.1 | 动态协方差 | `risk/covariance.py` | EWMA / Ledoit-Wolf 收缩；因子间 + 资产间 |
+| D.2 | 组合层风险预算 | `risk/budget.py` | 单因子 vol-scale 升级为组合 risk parity / vol-target |
+| D.3 | 回撤控制 | `risk/drawdown.py` | 回撤触发 de-gross，非硬止损 |
+| D.4 | 资金费率敞口 | `risk/funding.py` | perp funding 累计敞口上限 |
+| D.5 | 流动性/冲击约束 | `risk/liquidity.py` | 单标的最大仓位=f(ADV)；大单拆分 |
+| D.6 | 压力测试/VaR | `risk/stress.py` | 312 / LUNA / FTX 情景重放；VaR/CVaR |
+| D.7 | 风控接入回测 | `backtest/runner.py` | 验证风控不显著吃掉 alpha |
+
+**验收：** 带风控 walk-forward，Sharpe 下降可控，最大回撤显著改善。
+
+---
+
+## Phase E — 影子/纸面交易（~10 天工程 + 持续观察）
+
+| # | 任务 | 说明 |
+|---|------|------|
+| E.1 | live 数据接入 | Binance WebSocket；同一 Strategy 切 live 数据 |
+| E.2 | 纸面交易引擎 | 真实行情、模拟撮合、零真金 |
+| E.3 | 实盘成本校准 | 纸面成交对比回测假定 slippage/fees |
+| E.4 | 监控 + 告警 | 信号/持仓/PnL/风控状态面板 |
+| E.5 | 实盘-回测对账 | live vs backtest signal 逐 bar 归零 |
+| E.6 | 运营 runbook | 启停/断线/数据缺失/紧急平仓流程 |
+| **观察期** | **不可压缩** | 纸面跑**数周**，确认 live PnL 与回测预期一致 |
+
+**放行标准：** 纸面 PnL 落在回测预期置信区间内；无重大执行/数据/对账问题。
+
+---
+
+## Phase F — 正式上线（分批放量，运营主导）
+
+| 阶段 | 资金 | 持续 | 退出标准 |
+|------|------|------|----------|
+| F.1 最小真金 | 可承受全损 | 2–4 周 | 实盘成交/成本/PnL 与纸面一致 |
+| F.2 小额 | 目标 ~10% | 4–8 周 | Sharpe/回撤在预期内，无运营事故 |
+| F.3 半仓 | 目标 ~50% | 8 周+ | 容量/冲击未显著衰减 alpha |
+| F.4 满仓 | 目标 100% | 持续 | — |
+
+**贯穿全程：** 实时风控熔断（单日最大亏损 / 回撤硬上限 → 自动 de-gross/停机）；
+密钥资金安全（API 权限最小化、提币白名单、冷热分离）；因子衰减监控（live IC
+跌破阈值 → 退役）；**定期回 RC 补因子**。
+**任一批放量出现实盘-预期偏离，回退一档，不硬上。**
+
+---
+
+## 依赖与形态
+
+```
+迭代0 → 迭代1 → 迭代2 → 迭代3 → 迭代4 → ★RC → D → E → F
+  └ 每个迭代端到端可跑，消除当前最大不确定性 ┘    └ 门控保守 ┘
+                                    ↑___________________↓
+                              （alpha 衰减后持续回 RC 补因子）
+```
+
+- **前段是螺旋不是瀑布：** 每个迭代纵向穿透，尽早证伪。迭代 0 在第 3 天就触碰
+  "有没有 alpha 迹象"，而不是等 12 天工程做完。
+- **★RC 唯一不能排期**，也是最可能停住项目的地方。工程做完 ≠ 有钱赚。
+- **后段是门控不是迭代：** 真金阶段要瀑布式纪律，每道门提前定死，出偏离回退。
+- **上线后是循环不是终点：** alpha 衰减是常态，RC→D→E→F 持续转。
+```

@@ -1,10 +1,12 @@
 # Handoff / Current Status
 
+> **每日任务在 [`docs/PLAN.md`](PLAN.md)。** 新会话开始时先读那里，再回来看本文背景。
+
 Living document for seamless project continuity. Update at meaningful
 checkpoints (not every turn): when task state, decisions, or next steps change.
 Stable facts (architecture, conventions, commands) belong in `CLAUDE.md`, not here.
 
-_Last updated: 2026-06-29_
+_Last updated: 2026-06-30_
 
 ## Current state
 
@@ -37,35 +39,34 @@ _Last updated: 2026-06-29_
   backtest/live engine** (decided 2026-06-29; not for discovery; promote to an
   ADR when that layer is built). Improved evolutionary search is designed but
   deferred (design doc §3.12).
-- **Docs aligned to the new paradigm** (pending commit): wrote **ADR-0012**
+- **Docs aligned to the new paradigm** (committed `e29465c`): wrote **ADR-0012**
   (paradigm) and **ADR-0013** (purge/embargo); marked ADR-0001/0002/0003/0009/0011
   superseded/amended; rewrote `CONTEXT.md`; banners on the two old design docs;
   `CLAUDE.md` + research log noted as in-transition. Code is NOT yet changed —
   `evaluation/` still has the old grid/gates; the docs now describe the target.
+- **全生命周期计划写定**（`docs/PLAN.md`）：螺旋迭代 0–4 → ★RC → Phase D–F。
+  当前在**迭代 0（行走骨架）**，尚未开始。
 
-## Next steps (priority order)
+## Next steps
 
-Methodology track (the big one — follow `docs/design/factor-system-architecture.md` §5).
-Docs/ADRs are now done; remaining work is code. **User's chosen entry point: the
-factor generation/evaluation loop (discovery)** — i.e. steps 1–2 below.
-**Decided:** scaffold the propose→evaluate→feedback loop, but wire its evaluate
-ring to the NEW statistical evaluation (steps 1–2), not to the old `grid.py`/
-`gates.py`. Do not get the loop green on old eval and swap later — the feedback
-would be old-paradigm and untrustworthy. (Design doc §5, "On the mining loop".)
+见 **`docs/PLAN.md`** — 当前迭代任务、验收标准、完整路线图均在那里。
 
-1. Fix discovery correctness: t+1 execution, vol-normalized label, market
-   neutralization (needs a minimal Base Factor Model), autocorr-corrected
-   t-stats, walk-forward purge/embargo. Subsumes the old threshold look-ahead item.
-2. Rewrite Research Gate to a pure-statistical predicate (drop strategy-Sharpe
-   clauses, add deflation via a Trial Registry); harden library intake with
-   orthogonality on stored factor return streams.
-3. Build out the deployment layer (portfolio construction → Trading Gate
-   predicate → single NautilusTrader engine) only after discovery is correct.
+关键决策备忘（不在 PLAN.md 里的）：
+- propose→evaluate→feedback 循环必须接新统计评估（迭代 0–2），**不能先接旧
+  `grid.py`/`gates.py` 让 loop 跑通再换**——旧 eval 产生的 feedback 本身是错的。
 
-Housekeeping track (independent, small):
-
-4. Move prompts out of `mining/llm_provider.py` into a `prompts.yaml`.
-5. Normalize `tests/` filenames to `test_<module>.py`.
+PLAN 增补（2026-06-30，多 horizon 评估 + 经济先验定位，未写代码）：
+- 迭代 1 加 **1.5 多 horizon 评估编排**（`factor.py` 吃 `horizons` 网格返回整条 profile，
+  不塌缩单点）；1.4 标注 **horizon 网格取值未定**（须按 crypto 机制尺度自定）。
+- 多 horizon 纪律写明：评估≠max-over-horizon≠固定单 horizon；horizon 是因子假设的一部分，
+  用「连续宽带 vs 孤立尖峰」判真伪；终审在迭代 4 扣成本组合夏普。
+- 迭代 2 接上缺口：衰减曲线扫的每个 horizon **计入 Trial Registry / deflation**；
+  **经济先验不建模块**——只记录事前 metadata（`mining/proposal.py`→`registry.py`/`library.py`）
+  + 声明 vs 实测 horizon 一致性检查（`gates.py`）；真机制判断停 RC 人工门，evaluation 不调 LLM。
+- 执行间隔（t+1 进场，标签 `close[t+1+horizon]/close[t+1]-1`）已实现（2026-06-30）：
+  `_forward_returns` 加 `execution_lag_bars=1` 默认参数（positional entry + time-based exit）；
+  `evaluate_directional_factor` 透传。70 tests 全绿。**迭代 0.1 完成。**
+  旧测试（测 IC/alignment index/trailing window 等）显式传 `execution_lag_bars=0` 保留原语义。
 
 ## Open decisions
 

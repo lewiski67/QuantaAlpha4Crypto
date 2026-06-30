@@ -27,6 +27,7 @@ def evaluate_directional_factor(
     horizon: str | pd.Timedelta,
     input_lookback_window: str | pd.Timedelta | None = None,
     input_audit_sample_count: int = 16,
+    execution_lag_bars: int = 1,
 ) -> FactorEvaluation:
     """Evaluate one Directional Factor against one Forward Return horizon."""
     if feature_panel.data_role != "feature":
@@ -45,6 +46,7 @@ def evaluate_directional_factor(
         feature_panel.data,
         horizon_delta,
         price_column=_default_close_column(feature_panel.data),
+        execution_lag_bars=execution_lag_bars,
     )
     aligned = pd.concat(
         [scores.rename("score"), forward_returns.rename("forward_return")],

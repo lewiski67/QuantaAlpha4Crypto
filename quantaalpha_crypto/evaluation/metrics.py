@@ -33,18 +33,33 @@ def _forward_returns(
     horizon: pd.Timedelta,
     price_column: str = "close",
     name: str = "forward_return",
+    execution_lag_bars: int = 1,
 ) -> pd.Series:
     pieces = []
     for symbol, symbol_data in data.sort_index().groupby(level="symbol", sort=False):
         close = symbol_data[price_column].astype("float64")
         timestamps = close.index.get_level_values("timestamp")
-        future_index = pd.MultiIndex.from_arrays(
-            [timestamps + horizon, [symbol] * len(timestamps)],
+
+        # Entry: positional shift so irregular gaps don't produce phantom bars.
+        entry_timestamps = pd.to_datetime(
+            pd.Series(timestamps).shift(-execution_lag_bars).values
+        )
+        entry_index = pd.MultiIndex.from_arrays(
+            [entry_timestamps, [symbol] * len(timestamps)],
             names=["timestamp", "symbol"],
         )
-        future_close = close.reindex(future_index)
-        future_close.index = close.index
-        pieces.append(future_close / close - 1.0)
+        entry_close = close.reindex(entry_index)
+        entry_close.index = close.index
+
+        # Exit: time-based from entry so horizon means real elapsed time.
+        exit_index = pd.MultiIndex.from_arrays(
+            [entry_timestamps + horizon, [symbol] * len(timestamps)],
+            names=["timestamp", "symbol"],
+        )
+        exit_close = close.reindex(exit_index)
+        exit_close.index = close.index
+
+        pieces.append(exit_close / entry_close - 1.0)
 
     if not pieces:
         return pd.Series(dtype="float64", name=name)
