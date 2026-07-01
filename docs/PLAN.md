@@ -28,8 +28,8 @@ _开始日期: 2026-06-30_
 
 ### 迭代 0 — 行走骨架（2–3 天）
 
-- **消除：** 数据流通不通？这套东西能不能对一个因子给出样本外预测判决？
-- **退出问题：** "一个因子，从 panel 到一个样本外 IC 数字，端到端跑通了吗？"
+- **消除：** 数据流通不通？这套东西能不能对一个因子给出一个带显著性的统计判决？
+- **退出问题：** "一个因子，从 panel 到一个全样本 IC + NW 显著性数字，端到端跑通了吗？"
 - **刻意不做：** Base Factor Model、purge/embargo、市场中性、Trial Registry、
   正交性、回测、循环、进化、数据扩展。全部砍掉。
 
@@ -37,10 +37,17 @@ _开始日期: 2026-06-30_
 |---|------|------|------|
 | 0.1 | t+1 执行对齐 | `evaluation/metrics.py`、`evaluation/factor.py` | 加执行间隔：t 出信号 → **t+1 进场** → 标签 `close[t+1+horizon]/close[t+1]-1`。改 `_forward_returns` 加 `execution_lag_bars=1` 参数，`evaluate_directional_factor` 透传；TDD 写测试锁住对齐语义 |
 | 0.2 | NW 自相关修正 t-stat（TDD） | `evaluation/metrics.py` | **先写测试**：合成正自相关序列 NW t-stat < naive；再写 `_nw_tstat` |
-| 0.3 | 单切分 IC 判决脚本 | `mining/loop.py`（最小） | 一个因子 → 单 train/test 切分 → IC + NW t-stat → 打印一个数 |
+| 0.3 | 全样本 IC 判决脚本 | `evaluation/metrics.py`、`evaluation/factor.py`、`mining/loop.py`（最小） | `_bars_per_horizon`（Timedelta→lag 根数）+ `factor.py` 接线产 x_t 调 `_nw_tstat` + 脚本：一个因子 → **全样本** IC + NW t-stat → 打印一个数。**不切分** |
 
-**验收：** 跑一个手写因子，端到端打印出样本外 IC 与 NW t-stat。若信号与噪声无异，
+**验收：** 跑一个手写因子，端到端打印出**全样本 IC 与 NW t-stat**。若信号与噪声无异，
 你已用 3 天而非 12 天逼近了"有没有 alpha 迹象"。
+
+> **为什么 0.3 不做 train/test 切分（2026-07-01 决策）：** 单个、写定、**零自由参数**
+> 的因子评估**没有拟合、没有选因子**，holdout 在统计上多余——业界评估原语（predictive
+> regression / Fama-MacBeth）就是**全样本 + HAC(Newey-West)标准误**，不做留出。切分/留出
+> 的价值是**非平稳/持续性**检验，那是 **walk-forward（迭代 1）** 的活；多重检验去膨胀是
+> **迭代 2**。故三件事分层：全样本 IC+NW = 评估原语（0.3）→ walk-forward（1.x）→ deflation
+> （2.x）。**会犯错的做法是停在单因子全样本就当研究判决拿去交易。**
 
 ### 迭代 1 — 让 IC 判决可信（~3 天）
 
@@ -57,6 +64,15 @@ _开始日期: 2026-06-30_
 
 **验收：** 同一因子在完整 walk-forward + 市场中性 + NW 修正下重跑，IC 判决是诚实的。
 此处可能直接证伪迭代 0 看到的"信号"——那也是有价值的结果。
+
+> **Block bootstrap（DEFERRED，条件触发，不排期）：** NW（0.2）是**渐近**方法，
+> 序列够长时够用。**触发条件**：迭代 1 上 walk-forward 后，若 test 窗口过短
+> （NW 的 t 分布近似不可信）或残差严重非正态，则补 **block bootstrap** 作为
+> 自相关稳健显著性的替代/交叉验证——对逐 bar 序列做分块重采样构造经验分布，
+> 绕开"选 L"和正态假设。落点 `evaluation/metrics.py`（`_block_bootstrap_pvalue`），
+> Research Gate（2.2）可切换或并用。**纪律：不满足触发条件不写**——提前写属于为
+> 可能不存在的问题写代码；先让 NW 在真实样本量上跑，由数据决定是否需要。设计
+> 文档 §3.5 的 "Newey-West / block bootstrap" 并列即此意。
 
 > **多 horizon 评估的纪律（贯穿 1.4/1.5 → 2.x）：** 评估**不是** max-over-horizon，
 > 也不是固定单 horizon。horizon 是**因子假设的一部分**，由经济机制事前声明；在网格上
@@ -76,8 +92,9 @@ _开始日期: 2026-06-30_
 | 2.2 | Research Gate = 纯统计谓词 | `evaluation/gates.py` | 移除 Sharpe；接 NW t-stat + deflated p（`p*count`）+ ICIR 阈值。**加衰减带谓词**（连续宽带 + 显著性，对应 1.4/1.5 的读出准则）+ **声明 horizon vs 实测带一致性检查**（声明"8h 回归"却只在 5min 工作→机制不符，标记） |
 | 2.3 | 库存 Factor Return Stream + 增量 IC | `evaluation/library.py` | `add_factor(id, stream, meta)`→parquet；`incremental_ic(...)`；`is_orthogonal(0.05)`。**`meta` 存机制文本 + 声明 horizon**（审计） |
 | 2.4 | grid.py 标 DEPRECATED | `evaluation/grid.py` | 顶部 banner，保留文件免 import 崩 |
+| 2.5 | 信号分桶条件收益单调性（非 IC 支柱，TDD） | `evaluation/metrics.py`、`evaluation/gates.py` | 计算层 `_conditional_return_profile(scores, residual_returns, n_buckets)`：按信号分位分桶，出每桶平均**残差**收益（吃 1.2/1.3 的 vol-norm 市场残差收益，非原始收益）；Gate 谓词：桶均值单调性（Spearman on bucket means）+ 顶底桶差 NW 显著。**先测**：合成单调关系→通过；U 型/非单调（IC 显著但形状坏）→拦截 |
 
-**验收：** 完整 Research Gate 路径 NW-tstat deflation → orthogonality → accept/reject，
+**验收：** 完整 Research Gate 路径 NW-tstat deflation → orthogonality → **单调性** → accept/reject，
 全有测试。grid/threshold 搜索不再被调用。
 
 > **经济先验的归处（不要建模块）：** 经济先验**大部分不能代码化**，硬塞统计函数是假严谨。
@@ -87,6 +104,23 @@ _开始日期: 2026-06-30_
 > **「这是真机制还是事后编故事」的判断停在 RC 人工门**（见下方 Phase RC），不进代码。
 > **边界**：机制文本起源于 `mining/`，但 `evaluation/` 只把它当传入的 metadata + 做一致性
 > 检查，**绝不在 `evaluation/` 里调 LLM 做经济分析**（守 `CLAUDE.md` 的 evaluation 不调 LLM 铁律）。
+
+> **为什么只加分桶单调性这一根非 IC 支柱（2.5 的取舍）：** 业界统计筛选不止 IC——还看分位数
+> 多空收益、换手/成本、因子 Sharpe。但换手/成本/Sharpe 按"零交易参数"不变量归 Trading Gate；
+> 分位数**截面**多空因 N=2–3 退化不可用。**唯一同时满足「与 IC 正交 + 小 N 时间序列可用 + 纯
+> 统计无交易 + 低复杂度」的支柱，就是按信号强度分桶的条件收益单调性**——它抓 Rank IC 系统性
+> 漏掉的**非线性/尾部结构**（IC 显著但只有极端分位有效、中间反向的假因子会被它拦）。**纪律：
+> 因子层判据要吝啬**，每加一个 gate 维度就多一条过拟合自由度；hit rate（与 IC 冗余）、非线性
+> 依赖 MI（小样本估计噪声大、难 deflate）、高阶矩预测（仅按因子机制逐个启用）都**只作诊断/
+> 升级工具，不进常规 gate**。仅当 RC 出现「IC 显著却回测不赚」时才升级到 MI 等。
+
+> **截面发现 / 信息宇宙 ≠ 可交易宇宙（backlog，暂不做）：** N=2–3 指**可交易**标的数；几百个流动
+> 币的信息**没丢**，可作特征/市场代理/残差化目标（Base Model §3.4 已用）。丢的只是"可交易集上的
+> 截面多空组合"这个自带市场中性、需交易多腿的构造物。**潜在效率增强**：用几百币宇宙做**截面发现**
+> （每时点几百观测，高统计功效筛机制），再把幸存机制拿到 2–3 个可交易标的做 **per-symbol 时间序列
+> 终审**（终审必须在可交易标的上，因那才是 P&L）。当前设计默认直接在 per-symbol 提+评因子；截面
+> 发现是"搜索效率层"，与进化搜索(§3.12)同类——**发现流程正确前不做**，仅当"2–3 标的统计功效不足、
+> 机制看不清"成为真实瓶颈才上。
 
 ### 迭代 3 — 闭合挖因子循环（~3 天）
 

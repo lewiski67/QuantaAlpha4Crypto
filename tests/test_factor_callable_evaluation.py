@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import pytest
 
@@ -108,6 +110,31 @@ def test_evaluate_directional_factor_reports_basic_ic_evidence():
 
     assert result.ic == pytest.approx(1.0)
     assert result.rank_ic == pytest.approx(1.0)
+
+
+def test_evaluate_directional_factor_reports_nw_tstat():
+    # Close scores carry an up-drift that predicts the next-bar return, so the NW
+    # t-stat must be finite and share the sign of the IC (NW only rescales the
+    # standard error, never flips the point estimate's direction).
+    import numpy as np
+
+    timestamps = pd.date_range("2026-01-01", periods=120, freq="1min")
+    rng = np.random.default_rng(0)
+    price = 100.0
+    prices = []
+    for _ in timestamps:
+        price *= 1.0 + rng.normal(0.001, 0.005)
+        prices.append(price)
+    panel = _make_panel(
+        [(ts.isoformat(sep=" "), p) for ts, p in zip(timestamps, prices)]
+    )
+
+    result = evaluate_directional_factor(
+        panel, lambda data: data["close"], horizon="3min", execution_lag_bars=1
+    )
+
+    assert math.isfinite(result.nw_tstat)
+    assert math.copysign(1.0, result.nw_tstat) == math.copysign(1.0, result.ic)
 
 
 def test_evaluate_directional_factor_requires_feature_data():

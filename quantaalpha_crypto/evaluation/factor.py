@@ -5,7 +5,11 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from quantaalpha_crypto.evaluation.metrics import _forward_returns
+from quantaalpha_crypto.evaluation.metrics import (
+    _bars_per_horizon,
+    _forward_returns,
+    _nw_tstat,
+)
 from quantaalpha_crypto.evaluation.panel import CryptoPanel
 
 
@@ -19,6 +23,7 @@ class FactorEvaluation:
     forward_returns: pd.Series
     ic: float
     rank_ic: float
+    nw_tstat: float
 
 
 def evaluate_directional_factor(
@@ -60,7 +65,37 @@ def evaluate_directional_factor(
         forward_returns=aligned["forward_return"],
         ic=_corr(aligned["score"], aligned["forward_return"]),
         rank_ic=_corr(aligned["score"].rank(), aligned["forward_return"].rank()),
+        nw_tstat=_nw_ic_tstat(
+            aligned["score"], aligned["forward_return"], feature_panel.data.index, horizon_delta
+        ),
     )
+
+
+def _nw_ic_tstat(
+    scores: pd.Series,
+    forward_returns: pd.Series,
+    panel_index: pd.MultiIndex,
+    horizon: pd.Timedelta,
+) -> float:
+    """Newey-West HAC t-stat for the IC's per-bar contribution stream.
+
+    The stream is ``x_t = (score_t - mean)(return_t - mean)`` whose mean is the
+    covariance underlying the IC. Overlapping Forward Returns make adjacent
+    terms autocorrelated; the NW lag is the horizon expressed in bars.
+
+    0.3 skeleton limitations (both lifted in iteration 1):
+      * contributions are POOLED across symbols (not per-symbol demeaned); we
+        sort by (symbol, timestamp) so each symbol's stream is contiguous, but
+        the handful of cross-symbol boundary terms are spurious.
+      * the bar cadence for the lag is read from the full panel grid, valid only
+        for clean, non-forward-filled factors.
+    """
+    if len(scores) < 2:
+        return float("nan")
+    contributions = (scores - scores.mean()) * (forward_returns - forward_returns.mean())
+    contributions = contributions.sort_index(level=["symbol", "timestamp"])
+    lag = _bars_per_horizon(panel_index, horizon)
+    return _nw_tstat(contributions, lag)
 
 
 def _normalize_scores(scores: pd.Series) -> pd.Series:
