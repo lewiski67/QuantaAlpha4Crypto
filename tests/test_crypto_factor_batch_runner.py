@@ -54,6 +54,7 @@ def test_batch_runner_evaluates_supplied_factor_callables_and_updates_library(tm
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     assert [(factor.factor_name, factor.symbol) for factor in result.factors] == [
@@ -123,6 +124,7 @@ def test_batch_runner_stores_effective_factor_for_the_symbol_that_passed(tmp_pat
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     # New paradigm: all non-failed factors are "candidate" (placeholder)
@@ -181,6 +183,7 @@ def test_batch_runner_captures_failed_callable_diagnostics_and_continues(tmp_pat
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     assert [(factor.factor_name, factor.symbol) for factor in result.factors] == [
@@ -303,6 +306,7 @@ def test_batch_runner_keeps_generated_factor_artifacts_inside_workspace_dirs(tmp
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     diagnostic_reference = result.factors[0].diagnostic_reference

@@ -53,7 +53,9 @@ def test_evaluate_directional_factor_aligns_scores_with_forward_returns():
     def close_score(data):
         return data["close"]
 
-    result = evaluate_directional_factor(panel, close_score, horizon="1min", execution_lag_bars=0)
+    result = evaluate_directional_factor(
+        panel, close_score, horizon="1min", input_lookback_window="1min", execution_lag_bars=0
+    )
 
     assert result.scores.index.tolist() == [
         (pd.Timestamp("2026-01-01 00:00:00"), "BTCUSDT"),
@@ -106,7 +108,9 @@ def test_evaluate_directional_factor_reports_basic_ic_evidence():
     )
     panel = CryptoPanel(data=build_crypto_panel(raw), data_role="feature")
 
-    result = evaluate_directional_factor(panel, lambda data: data["close"], horizon="1min", execution_lag_bars=0)
+    result = evaluate_directional_factor(
+        panel, lambda data: data["close"], horizon="1min", input_lookback_window="1min", execution_lag_bars=0
+    )
 
     assert result.ic == pytest.approx(1.0)
     assert result.rank_ic == pytest.approx(1.0)
@@ -130,7 +134,11 @@ def test_evaluate_directional_factor_reports_nw_tstat():
     )
 
     result = evaluate_directional_factor(
-        panel, lambda data: data["close"], horizon="3min", execution_lag_bars=1
+        panel,
+        lambda data: data["close"],
+        horizon="3min",
+        input_lookback_window="1min",
+        execution_lag_bars=1,
     )
 
     assert math.isfinite(result.nw_tstat)
@@ -168,6 +176,20 @@ def test_evaluate_directional_factor_requires_feature_data():
 
     with pytest.raises(ValueError, match="Feature Data"):
         evaluate_directional_factor(pnl_panel, lambda data: data["close"], horizon="1min")
+
+
+def test_evaluate_directional_factor_requires_lookback_declaration():
+    # Plan A: the causality audit is mandatory, so every factor must declare its
+    # lookback window. Omitting it must fail loudly, not skip the audit.
+    panel = _make_panel(
+        [
+            ("2026-01-01 00:00:00", 100.0),
+            ("2026-01-01 00:01:00", 101.0),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="input_lookback_window"):
+        evaluate_directional_factor(panel, lambda data: data["close"], horizon="1min")
 
 
 def test_evaluate_directional_factor_rejects_future_dependent_scores():
@@ -274,7 +296,11 @@ def test_execution_lag_entry_is_next_bar_close():
     ])
 
     result = evaluate_directional_factor(
-        panel, lambda data: data["close"], horizon="1min", execution_lag_bars=1
+        panel,
+        lambda data: data["close"],
+        horizon="1min",
+        input_lookback_window="1min",
+        execution_lag_bars=1,
     )
 
     assert result.forward_returns.index.get_level_values("timestamp").tolist() == [
@@ -297,7 +323,11 @@ def test_execution_lag_gap_bar_yields_nan_not_wrong_exit():
     ])
 
     result = evaluate_directional_factor(
-        panel, lambda data: data["close"], horizon="1min", execution_lag_bars=1
+        panel,
+        lambda data: data["close"],
+        horizon="1min",
+        input_lookback_window="1min",
+        execution_lag_bars=1,
     )
 
     assert result.forward_returns.index.get_level_values("timestamp").tolist() == [

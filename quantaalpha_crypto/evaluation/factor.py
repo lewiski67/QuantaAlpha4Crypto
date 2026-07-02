@@ -34,19 +34,30 @@ def evaluate_directional_factor(
     input_audit_sample_count: int = 16,
     execution_lag_bars: int = 1,
 ) -> FactorEvaluation:
-    """Evaluate one Directional Factor against one Forward Return horizon."""
+    """Evaluate one Directional Factor against one Forward Return horizon.
+
+    ``input_lookback_window`` is mandatory: it declares the factor's maximum
+    lookback (a duration back from each scored timestamp) and drives the
+    causality audit -- sampled truncate-and-recompute checks that scores use no
+    data after their timestamp and none earlier than declared. No declaration,
+    no evaluation.
+    """
     if feature_panel.data_role != "feature":
         raise ValueError("Directional Factor evaluation requires Feature Data")
+    if input_lookback_window is None:
+        raise ValueError(
+            "input_lookback_window is required: declare the factor's maximum "
+            "lookback so the causality audit can verify scores use no future data"
+        )
     horizon_delta = pd.Timedelta(horizon)
     scores = _normalize_scores(factor(feature_panel.data))
-    if input_lookback_window is not None:
-        _audit_factor_inputs(
-            data=feature_panel.data,
-            factor=factor,
-            scores=scores,
-            input_lookback_window=pd.Timedelta(input_lookback_window),
-            sample_count=input_audit_sample_count,
-        )
+    _audit_factor_inputs(
+        data=feature_panel.data,
+        factor=factor,
+        scores=scores,
+        input_lookback_window=pd.Timedelta(input_lookback_window),
+        sample_count=input_audit_sample_count,
+    )
     forward_returns = _forward_returns(
         feature_panel.data,
         horizon_delta,

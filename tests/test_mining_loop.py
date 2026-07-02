@@ -40,7 +40,9 @@ def test_verdict_label_thresholds():
 def test_judge_single_factor_runs_end_to_end():
     # The skeleton's job: data -> factor -> full-sample IC + NW t-stat -> verdict.
     panel = _uptrend_panel()
-    verdict = judge_single_factor(panel, lambda data: data["close"], horizon="3min")
+    verdict = judge_single_factor(
+        panel, lambda data: data["close"], horizon="3min", input_lookback_window="1min"
+    )
 
     assert isinstance(verdict, SingleFactorVerdict)
     assert verdict.horizon == pd.Timedelta("3min")
@@ -57,7 +59,11 @@ def test_judge_single_factor_respects_threshold():
     # An impossibly high bar forces the noise verdict regardless of the estimate.
     panel = _uptrend_panel()
     verdict = judge_single_factor(
-        panel, lambda data: data["close"], horizon="3min", t_threshold=1e9
+        panel,
+        lambda data: data["close"],
+        horizon="3min",
+        input_lookback_window="1min",
+        t_threshold=1e9,
     )
     assert verdict.verdict in {"indistinguishable-from-noise", "insufficient-data"}
 

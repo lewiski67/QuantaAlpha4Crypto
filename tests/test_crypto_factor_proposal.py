@@ -233,6 +233,7 @@ def test_proposal_provider_candidates_are_evaluated_through_gates_and_recorded(t
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
+        input_lookback_window="2min",
     )
 
     assert [(factor.factor_name, factor.symbol) for factor in result.factors] == [
@@ -323,6 +324,7 @@ def test_proposal_provider_redacts_secret_prompt_context_from_artifacts_and_mani
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
+        input_lookback_window="2min",
     )
 
     manifest_text = workspace.manifest_path.read_text(encoding="utf-8")
@@ -347,6 +349,7 @@ def test_proposal_provider_manifest_keeps_distinct_artifact_references_for_dupli
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
+        input_lookback_window="2min",
     )
 
     manifest = json.loads(workspace.manifest_path.read_text(encoding="utf-8"))
@@ -401,6 +404,7 @@ def test_repair_loop_retries_failed_generated_callable_and_evaluates_repaired_ca
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
         research_direction="liquidity shock reversal",
+        input_lookback_window="2min",
     )
 
     assert [(factor.factor_name, factor.symbol) for factor in result.factors] == [
@@ -484,6 +488,7 @@ def test_repair_loop_preserves_unrepaired_failure_without_library_entry(tmp_path
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     assert [(factor.factor_name, factor.symbol) for factor in result.factors] == [
@@ -515,6 +520,7 @@ def test_repair_loop_preserves_multiple_failed_attempt_diagnostics(tmp_path):
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     failed_references = [

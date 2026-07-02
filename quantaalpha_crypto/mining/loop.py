@@ -35,12 +35,17 @@ def judge_single_factor(
     feature_panel: CryptoPanel,
     factor: FactorCallable,
     horizon: str | pd.Timedelta,
+    input_lookback_window: str | pd.Timedelta,
     t_threshold: float = 2.0,
     execution_lag_bars: int = 1,
 ) -> SingleFactorVerdict:
     """Evaluate one factor full-sample and label it by NW significance."""
     evaluation = evaluate_directional_factor(
-        feature_panel, factor, horizon, execution_lag_bars=execution_lag_bars
+        feature_panel,
+        factor,
+        horizon,
+        input_lookback_window=input_lookback_window,
+        execution_lag_bars=execution_lag_bars,
     )
     return SingleFactorVerdict(
         horizon=evaluation.horizon,

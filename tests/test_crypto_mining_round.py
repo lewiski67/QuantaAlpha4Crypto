@@ -119,6 +119,7 @@ def test_local_crypto_mining_round_writes_complete_research_artifact(tmp_path):
             pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
             max_repair_attempts=1,
             research_direction="liquidity shock reversal",
+            input_lookback_window="2min",
         ),
         proposal_provider=FakeRoundProposalProvider(),
         repair_provider=FakeRoundRepairProvider(),
@@ -209,6 +210,7 @@ def test_local_crypto_mining_round_feeds_previous_round_results_to_next_proposal
             feature_data_dependencies=config.feature_data_dependencies,
             pnl_data_dependencies=config.pnl_data_dependencies,
             max_repair_attempts=0,
+            input_lookback_window="2min",
         ),
         proposal_provider=followup_provider,
         repair_provider=FakeRoundRepairProvider(),
@@ -301,5 +303,6 @@ def _fixture_round_inputs(tmp_path):
             feature_data_dependencies=["fixture_spot_1m_ohlcv"],
             pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
             max_repair_attempts=1,
+            input_lookback_window="2min",
         ),
     )

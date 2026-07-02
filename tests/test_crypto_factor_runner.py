@@ -28,6 +28,7 @@ def test_crypto_factor_runner_executes_source_factors_through_evaluation_core(tm
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     assert [(factor.factor_name, factor.symbol) for factor in result.factors] == [
@@ -83,6 +84,7 @@ def test_crypto_factor_runner_converts_source_failures_to_rejected_diagnostics(t
         candidate_horizon="1min",
         feature_data_dependencies=["fixture_spot_1m_ohlcv"],
         pnl_data_dependencies=["fixture_spot_1m_ohlcv"],
+        input_lookback_window="2min",
     )
 
     assert [factor.gate_status for factor in result.factors] == ["execution_failed"] * 8

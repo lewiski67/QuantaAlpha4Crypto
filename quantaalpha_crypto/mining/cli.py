@@ -99,6 +99,7 @@ def main(
                 feature_data_dependencies=config_payload["feature_data_dependencies"],
                 pnl_data_dependencies=config_payload["pnl_data_dependencies"],
                 max_repair_attempts=config_payload["max_repair_attempts"],
+                input_lookback_window=config_payload["input_lookback_window"],
             ),
             proposal_provider=proposal_provider,
             repair_provider=repair_provider,
@@ -220,6 +221,7 @@ def _validate_config(config: dict[str, Any]) -> None:
         "feature_data_dependencies",
         "pnl_data_dependencies",
         "max_repair_attempts",
+        "input_lookback_window",
     ]
     missing = [field for field in required_fields if field not in config]
     if missing:
