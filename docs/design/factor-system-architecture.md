@@ -158,6 +158,12 @@ proposes mechanisms; `evaluation/` judges them.
   Without this, the LLM re-proposes variants of the same mechanism (already
   visible in the research log's repeated taker-flow exhaustion attempts) and
   burns budget against the orthogonality gate.
+- **The library snapshot is filtered per label track (ADR-0014).** V1
+  (directional, raw-return labels) and V2 (market-neutral, residual labels)
+  proposal rounds each see only their own track's entries: the same mechanism
+  under the two label regimes is two independent hypotheses, so "already
+  tested" must be answered within one label regime. A mixed snapshot makes the
+  LLM wrongly skip the untested other-track version.
 - Feedback content is **gross signal, decay, and orthogonality** — never
   net-after-cost P&L. Cost belongs to the deployment side; feeding it back here
   re-introduces the discovery filter ADR-0011 removed.
@@ -465,6 +471,11 @@ mechanisms instead of round-by-round blind proposal.
 - Only worth building once discovery is correct *and* a search bottleneck is
   demonstrated (you are finding some factors and want more/better) — not to
   rescue a pipeline that finds nothing.
+- **The fitness formula above is written in V2 (market-neutral) language.** If
+  this layer is ever built during V1 (ADR-0014: directional raw-return labels),
+  adapt it: incremental IR over the TSMOM/base-model benchmark, not over a
+  residualized target. Do not copy the residualization clause verbatim into a
+  V1 run.
 
 ---
 

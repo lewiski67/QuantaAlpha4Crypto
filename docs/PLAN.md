@@ -57,13 +57,19 @@ _开始日期: 2026-06-30_
 | # | 任务 | 文件 | 说明 |
 |---|------|------|------|
 | 1.1 | walk-forward + purge/embargo（TDD） | `evaluation/walk_forward.py` | **先测**：purge 后训练/测试无重叠；`_make_windows(purge_bars=horizon, embargo_bars=0)` |
-| 1.2 | vol-norm + 市场残差标签（TDD） | `evaluation/metrics.py` | `_vol_norm_returns`、`_market_residual`（OLS） |
-| 1.3 | Base Factor Model | `evaluation/base_model.py` | BTC-proxy 市场、TSMOM(20)、波动率(20)、资金费率均值(8期)；`residualize(...)` |
+| 1.2 | vol-norm 标签（TDD）【V1 重定义，ADR-0014】 | `evaluation/metrics.py` | `_vol_norm_returns`。**`_market_residual`（OLS）推迟到 V2**——V1 标签 = vol-norm 后的 raw forward return（方向性），见 ADR-0014 |
+| 1.3 | Base Factor Model（基准用途）【V1 重定义，ADR-0014】 | `evaluation/base_model.py` | BTC-proxy 市场、TSMOM(20)、波动率(20)、资金费率均值(8期)。V1 仅作**增量 IC 基准**（克隆杀手：候选须对裸 TSMOM 有增量）；`residualize(...)` 作为标签变换推迟到 V2 |
 | 1.4 | IC 衰减曲线（计算层） | `evaluation/metrics.py` | `_decay_profile(scores, returns, horizons)`，horizon 是读出来的不是搜出来的。**`horizons` 网格取值未定**——业界无统一标准，须按 crypto 机制尺度自定（秒级→日级，够宽够密罩住经济上合理的整条带），这是必须自己拍的设计项 |
-| 1.5 | 多 horizon 评估编排 | `evaluation/factor.py` | `evaluate_directional_factor` 从单 horizon 升级为吃 `horizons` 网格、返回整条 profile 进 `FactorEvaluation`。**评估对象是整条曲线，不塌缩成单点** |
+| 1.5 | 多 horizon 评估编排 + 标签/walk-forward 统一接线 | `evaluation/factor.py` | `evaluate_directional_factor` 从单 horizon 升级为吃 `horizons` 网格、返回整条 profile 进 `FactorEvaluation`。**评估对象是整条曲线，不塌缩成单点**。**同一次手术完成三件事**（决策于 1.2,避免混血过渡态）：①标签从裸 forward return 换成 **vol-norm 版**（除以 1.2 的 `_vol_norm_returns` 分母,V1/ADR-0014）；②接入 1.1 的 walk-forward 切窗（pooled OOS NW + ICIR 口径见 HANDOFF）；③审计改为每因子跑一次、不随 horizon 数翻倍 |
 
-**验收：** 同一因子在完整 walk-forward + 市场中性 + NW 修正下重跑，IC 判决是诚实的。
+**验收：** 同一因子在完整 walk-forward + vol-norm 标签 + NW 修正下重跑，IC 判决是诚实的。
 此处可能直接证伪迭代 0 看到的"信号"——那也是有价值的结果。
+
+> **V1/V2 分轨（ADR-0014，2026-07-02）：** V1 = **方向性**（vol-norm raw return 标签，
+> 单腿事件化交易，horizon 锁定 ~15min–4h；BTC 条款推广到全部币）；V2 = 市场中性
+> （`_market_residual` 残差标签 + 对冲，解锁日级以上 horizon）。评估机器标签无关,
+> 切换只换标签函数。V1 三护栏：horizon 锁短端 / TSMOM 增量基准 / 库相关性检查
+> + 风险层按 ~1 个相关赌注计。
 
 > **Block bootstrap（DEFERRED，条件触发，不排期）：** NW（0.2）是**渐近**方法，
 > 序列够长时够用。**触发条件**：迭代 1 上 walk-forward 后，若 test 窗口过短
@@ -92,7 +98,7 @@ _开始日期: 2026-06-30_
 | 2.2 | Research Gate = 纯统计谓词 | `evaluation/gates.py` | 移除 Sharpe；接 NW t-stat + deflated p（`p*count`）+ ICIR 阈值。**加衰减带谓词**（连续宽带 + 显著性，对应 1.4/1.5 的读出准则）+ **声明 horizon vs 实测带一致性检查**（声明"8h 回归"却只在 5min 工作→机制不符，标记） |
 | 2.3 | 库存 Factor Return Stream + 增量 IC | `evaluation/library.py` | `add_factor(id, stream, meta)`→parquet；`incremental_ic(...)`；`is_orthogonal(0.05)`。**`meta` 存机制文本 + 声明 horizon**（审计） |
 | 2.4 | grid.py 标 DEPRECATED | `evaluation/grid.py` | 顶部 banner，保留文件免 import 崩 |
-| 2.5 | 信号分桶条件收益单调性（非 IC 支柱，TDD） | `evaluation/metrics.py`、`evaluation/gates.py` | 计算层 `_conditional_return_profile(scores, residual_returns, n_buckets)`：按信号分位分桶，出每桶平均**残差**收益（吃 1.2/1.3 的 vol-norm 市场残差收益，非原始收益）；Gate 谓词：桶均值单调性（Spearman on bucket means）+ 顶底桶差 NW 显著。**先测**：合成单调关系→通过；U 型/非单调（IC 显著但形状坏）→拦截 |
+| 2.5 | 信号分桶条件收益单调性（非 IC 支柱，TDD） | `evaluation/metrics.py`、`evaluation/gates.py` | 计算层 `_conditional_return_profile(scores, returns, n_buckets)`：按信号分位分桶，出每桶平均收益（**V1 吃 vol-norm raw return,V2 换残差收益**,ADR-0014）。这是 V1 事件化交易形态的核心证据（验证"越极端越准"的结构；阈值本身留给部署层,因子层零自由参数）；Gate 谓词：桶均值单调性（Spearman on bucket means）+ 顶底桶差 NW 显著。**先测**：合成单调关系→通过；U 型/非单调（IC 显著但形状坏）→拦截 |
 
 **验收：** 完整 Research Gate 路径 NW-tstat deflation → orthogonality → **单调性** → accept/reject，
 全有测试。grid/threshold 搜索不再被调用。
@@ -130,10 +136,10 @@ _开始日期: 2026-06-30_
 | # | 任务 | 文件 | 说明 |
 |---|------|------|------|
 | 3.1 | 循环协调器 | `mining/loop.py` | `run_discovery_loop(config, n_rounds)`：proposal→runner→Research Gate→library |
-| 3.2 | 正交性反馈注入 proposal | `mining/proposal.py` | 已入库 mechanism 摘要注入 LLM（"以下已覆盖，提正交方向"） |
-| 3.3 | 断开旧 grid 调用链 | `mining/batch_runner.py`、`mining/round.py` | 路由到新 Research Gate |
-| 3.4 | Loop smoke 测试 | `tests/test_mining_loop.py` | mock LLM 验证一轮完整路径 |
-| 3.5 | _(可选/可延后)_ 进化搜索 | `mining/evolution.py` | fitness=deflated incremental IR；niching；LLM 变异算子。设计文档 §3.12，**仅当搜索成瓶颈才做** |
+| 3.2 | 正交性反馈注入 proposal | `mining/proposal.py` | 已入库 mechanism 摘要注入 LLM（"以下已覆盖，提正交方向"）。**库快照按轨道切**（ADR-0014）：V1 轮只喂 `label_mode=directional_v1` 条目、V2 轮只喂 V2 条目——同一机制在两种标签下是两个独立假设，查重必须各查各的,混喂会让 LLM 误跳过未测的另一轨版本 |
+| 3.3 | 断开旧 grid 调用链 + 轨道标记 | `mining/batch_runner.py`、`mining/round.py` | 路由到新 Research Gate。**产物全链路加 `label_mode` 字段**（ADR-0014）：manifest/报告/库条目/Trial Registry 统一标注 `directional_v1 \| market_neutral_v2`；库与 feedback 按轨隔离,V1 结论仅算方向性证据,V2 声明须残差标签下重评 |
+| 3.4 | Loop smoke 测试 | `tests/test_mining_loop.py` | mock LLM 验证一轮完整路径（含轨道隔离:V1 轮快照不含 V2 条目,反之亦然） |
+| 3.5 | _(可选/可延后)_ 进化搜索 | `mining/evolution.py` | fitness=deflated incremental IR；niching；LLM 变异算子。设计文档 §3.12，**仅当搜索成瓶颈才做**。**fitness 公式按轨道适配**（§3.12 原文是 V2 语言"residualizing against base model"；V1 语境下=对 TSMOM 基准的增量,勿照抄） |
 
 **验收：** CLI 跑 `run_discovery_loop` 多轮，库稳定增长，重复机制被反馈挡住。
 
