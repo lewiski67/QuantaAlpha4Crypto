@@ -6,7 +6,7 @@ Living document for seamless project continuity. Update at meaningful
 checkpoints (not every turn): when task state, decisions, or next steps change.
 Stable facts (architecture, conventions, commands) belong in `CLAUDE.md`, not here.
 
-_Last updated: 2026-07-01_
+_Last updated: 2026-07-02_
 
 ## Current state
 
@@ -46,6 +46,28 @@ _Last updated: 2026-07-01_
   `evaluation/` still has the old grid/gates; the docs now describe the target.
 - **全生命周期计划写定**（`docs/PLAN.md`）：螺旋迭代 0–4 → ★RC → Phase D–F。
   **迭代 0（行走骨架）已完成并提交**（0.1/0.2/0.3 + tz 修复，89 tests 全绿）；下一步迭代 1。
+
+迭代 1.1 完成（2026-07-02，walk-forward + 按时间戳 purge，TDD，96 tests 全绿，**未 commit**）：
+- **替换** `evaluation/walk_forward.py`（旧三段 train/val/test 日历-delta 构造器是死代码：
+  零生产调用、无专门测试——直接删，不并存）。新 `build_walk_forward_windows(sample_index,
+  horizon, train_window=180D, test_window=30D, step=30D, execution_lag_bars=1)`：**rolling +
+  两段(train/test)**，砍 validation 段（因子零自由参数，无超参可选→留出多余）。每窗吐
+  已 purge 的 `train_index` + `test_index`（MultiIndex 子集，`.loc` 即用）。
+- **purge 按时间戳，不数根数**（关键决策，多轮讨论定案）：训练行 `entry+horizon >= test_start`
+  即剔除；`entry` = per-symbol 下一根 bar（**entry 对齐 = t+1+horizon**，复用 `_forward_returns`
+  的 `shift(-1)` 语义，`_label_exit_timestamps` helper）。**用 t+horizon 会漏一根 bar 泄漏**
+  （under-purge，非保守）——已证伪，用 entry 对齐零漏。缺口回归测试锁死时间戳语义（01-04 的
+  entry 跨缺口进 test→正确 purge）。
+- **embargo 不加**：前向 walk-forward 每窗 train 整体在 test 之前，embargo（剔 test 之后的
+  train）无对象可作用→是 no-op，加它属 speculative feature（tdd skill 禁）。**留到 CPCV 阶段**
+  再加（那时 test 夹在两 train 中间才有可测行为）。ADR-0013 的 embargo 要求由 CPCV 满足。
+- 边界层 vs 样本层：**等价**（同一不等式移项 `entry+horizon≥test_start` ⟺ `entry≥test_start−horizon`），
+  实现选边界层（单 cutoff 向量化）、输出样本索引。当前真实数据（37 币 1m，Δ 恒 60s 零缺口，
+  实测）均匀→A≡B；选时间戳法是口径卫生（与标签同源）+ 抗未来混频，非当前数据必需。
+- 测试 `tests/test_walk_forward.py`（新，7 例）：tracer 两段切分 / purge 核心保证 /
+  **缺口回归（时间戳≠根数）** / 无尾部残窗 / 空索引→[]（守死循环）/ 非正窗口→raise。
+- **下一步 1.2**：vol-norm + 市场残差标签（OLS），`evaluation/metrics.py`。切窗器已就位，
+  但**尚未接进 `factor.py` 评估流程**（walk-forward 编排属 1.5 多 horizon 编排一并接线）。
 
 ## Next steps
 
