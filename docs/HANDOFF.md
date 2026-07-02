@@ -25,8 +25,9 @@ _Last updated: 2026-07-02 (1.2 完成: _vol_norm_returns)_
   Recover from git `92b40de` if needed.
 - Root design notes moved to `docs/design/`. `dynamic_threshold_methods.md` later
   deleted (obsolete under the new paradigm — no thresholds in discovery).
-  `strategy_core_architecture_plan.md` kept (superseded on methodology, retained
-  for deployment-layer detail). `CLAUDE.md` updated with PRD/HANDOFF conventions.
+  `strategy_core_architecture_plan.md` kept at the time (superseded on methodology,
+  retained for deployment-layer detail), then **deleted by user 2026-07-02**
+  (recover from git history if needed). `CLAUDE.md` updated with PRD/HANDOFF conventions.
 - **Methodology overhaul decided AND documented** (see
   `docs/design/factor-system-architecture.md`). Time-series (per-symbol) not
   cross-sectional; pure statistical screening (no grid/threshold/strategy-Sharpe

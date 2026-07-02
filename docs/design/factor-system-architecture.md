@@ -3,8 +3,10 @@
 Status: Design baseline for the next build phase
 Date: 2026-06-29
 Supersedes (methodology): the cross-sectional assumptions in
-`docs/design/strategy_core_architecture_plan.md` and the Evaluation-Grid /
-single-factor-Sharpe assumptions in `docs/adr/0001` and `docs/adr/0009`.
+`docs/design/strategy_core_architecture_plan.md` (deleted 2026-07-02; recover
+from git history if deployment-layer detail is ever needed) and the
+Evaluation-Grid / single-factor-Sharpe assumptions in `docs/adr/0001` and
+`docs/adr/0009`.
 Requires follow-up: a paradigm ADR + a `CONTEXT.md` rewrite (see §6).
 
 This document defines the target system structure and, for each component, its
