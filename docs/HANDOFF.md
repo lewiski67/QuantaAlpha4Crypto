@@ -6,7 +6,7 @@ Living document for seamless project continuity. Update at meaningful
 checkpoints (not every turn): when task state, decisions, or next steps change.
 Stable facts (architecture, conventions, commands) belong in `CLAUDE.md`, not here.
 
-_Last updated: 2026-07-02 (1.2 完成: _vol_norm_returns)_
+_Last updated: 2026-07-03 (1.4 设计定案，待写代码)_
 
 ## Current state
 
@@ -91,7 +91,8 @@ _Last updated: 2026-07-02 (1.2 完成: _vol_norm_returns)_
 - **V1/V2 分轨决策（2026-07-02，ADR-0014,用户拍板）**：经两天 alpha/beta 定位长讨论
   （方向性 vs 市场中性两条路径、对冲机制、费用算术、事件化交易),用户决定 **V1 = 方向性**：
   标签 = vol-norm 后的 **raw forward return**（无市场残差化）,单腿事件化交易 BTC/ETH/SOL,
-  horizon 锁 ~15min–4h。**V2 = 市场中性**：`_market_residual` 残差标签 + β 对冲,解锁日级+。
+  horizon 锁 ~1min–4h（2026-07-02 从 15min–4h 下扩,见下方 1.3 之后的记录）。**V2 = 市场中性**：
+  `_market_residual` 残差标签 + β 对冲,解锁日级+。
   评估机器标签无关,V2 切换只换标签函数。V1 三护栏（缺一会踩克隆/伪显著/伪分散坑）：
   ①horizon 锁短端（raw 标签日级+被大盘单一趋势主导,统计失效）；②Base Factor Model 保留
   TSMOM 增量基准（克隆杀手）；③库相关性检查 + 风险层按 ~1 个相关赌注计。事件化的阈值
@@ -126,9 +127,141 @@ _Last updated: 2026-07-02 (1.2 完成: _vol_norm_returns)_
 - 测试 `tests/test_metrics.py` +10 例:除以 trailing std / √h 缩放（精确 −0.05 手算例）/
   **缺口时间戳窗口回归**（bar-count 会跨缺口误取）/ 默认 7D 满窗 warmup / 零波动 floor 有限 /
   **per-symbol 自归一化**（10× 振幅两币标签相等）/ 分钟频 / 亚 bar horizon raise / 非正窗口 raise。
-- **下一步 1.3（V1 重定义）**：Base Factor Model 仅作增量 IC 基准（TSMOM(20)/波动率(20)/
-  资金费率均值(8期)）,`residualize()` 推迟 V2;或直接跳 1.4（衰减曲线,**horizon 网格待拍**,
-  V1 锁 ~15min–4h）——顺序可与用户确认。
+- **1.3 范围收窄讨论（2026-07-02，未写代码）**：Base Factor Model 原定三条基准
+  （TSMOM(20)/波动率(20)/资金费率均值(8期)）逐条推敲后有实质调整：
+  - **加第四条基准：短周期反转**。真实 BTC 数据实测（15min/1h/4h lookback×horizon 网格）：
+    V1 目标 horizon 带（15min–4h）上**反转 IC 全面为正、动量 IC 全面为负**——裸动量在这个
+    尺度上不是主导效应，反转才是。外部文献交叉验证（非训练记忆，WebSearch 实查）：
+    Shen et al. (2020) 用市场+规模+**反转**三因子给 crypto 定价（不是动量）；
+    《Momentum or Reversal: Which is the Appropriate Third Factor for Cryptocurrencies?》
+    本身就是这个问题的学术辩题；Wen et al. (2022) 日内研究证实动量反转共存、随流动性/
+    跳跃/宏观事件切换主导权。**结论：加反转基准，理由是外部文献+自己数据双重印证**，
+    不是我们独家发现。
+  - **TSMOM/反转窗口无业界公认数字可抄**：查证发现 crypto 因子文献几乎全是横截面/周频
+    大样本设定（Liu-Tsyvinski 系列），和我们「N=2–3、per-symbol、15min–4h 时序」的设定
+    不匹配（同 ADR-0012 已判定的横截面退化问题）。日内文献只证实现象存在，未给出公认
+    窗口值。**决定：像 1.2 的 7D 一样，用真实数据网格测出窗口，不抄外部数字**——待做。
+  - **波动率基准暂不建，推迟**：字面定义（score=波动率水平）没有方向，测不出与有符号
+    标签的相关性；时序适配的替代是杠杆效应（score=波动率*变化*，非水平）但**未在 crypto
+    上验证过**，且业界另一条主流做法（BAB/低波动异象）是横截面排序法，同样在 N=2–3 下
+    退化不可用。波动率风险溢价（VRP）路径需要期权隐含波动率数据（如 Deribit DVOL）——
+    **当前数据管线只有 Binance 现货+USD-M 永续，无期权数据，此路不通**。此外 1.2 的
+    vol-norm 标签已在标签层削平"变相押波动尺度"的优势，这条基准的边际防御价值存疑。
+    **复活条件：接入期权数据，或有人验证杠杆效应在 crypto 上成立**。
+  - **V1 最终基准集（三条）**：TSMOM + 反转（窗口待用真实数据网格法测定）+ 资金费率均值
+    （8期=~64h，已有交易所结算周期的结构依据，无需改动）。
+- **TSMOM/反转基准形态再调整（2026-07-02，讨论中，未写代码）**：三个币在窗口网格上的
+  动量/反转符号**不一致**（BTC/SOL 短 lookback 反转显著、长 lookback 动量微弱；ETH 恰好
+  相反——长 lookback 动量显著）。**改用"两个固定窗口点（短≈15min、长≈4h）的原始 trailing
+  return 数值"当回归自变量**，不预先判定方向/符号；候选因子对这两个变量回归取残差，
+  系数正负由数据自己决定每个币该算动量还是反转，不需要人工分币指定。已用户确认。
+- **重大范围决定：暂时只做合约，不做现货（2026-07-02，用户明确拍板，见 memory
+  `project_futures_only_no_spot`）**：交易、回测、因子评估**全部层面**只用 Binance
+  USD-M 永续合约数据，现货排除（理由：现货手续费经济账算不过来）。本机合约数据完整
+  （`/home/lewiski/crypto_data/external/binance/futures/<SYMBOL>/`：um_klines_1m +
+  mark/premium/funding，BTC/ETH/SOL 三个币都有）。**影响审计**：
+  - 今天的 TSMOM/反转窗口网格测试**已在合约上补测**，结论与现货一致（数字几乎相同，
+    详见下方留档数字），不受影响。
+  - **1.2 的真实数据校验（label std=1.0035）、σ̂ 估计量赛马（simple std vs EWMA）、
+    alpha/beta 分解图，当时全部用的是现货**——函数本身不认产品类型（喂什么面板都能跑，
+    不需要改代码），但这些数字的经验结论**尚未在合约数据上复核**，是下一步的待办。
+  - ADR-0004 现货和合约都列为候选执行场地，未排除现货——这次决定进一步收窄为合约专用，
+    暂定为临时决定，不一定永久，若成为长期决定应补一条 ADR 或修订 ADR-0004。
+- **①合约复核完成**：1.2 的 std≈1 校验（合约 0.9832 vs 现货 1.0035）、σ̂ 赛马
+  （simple/EWMA 相关 0.9647 vs 0.965）在合约数据上结论一致，7D/simple std 不受产品切换影响。
+
+迭代 1.3 完成（2026-07-02，TDD，121 tests 全绿，**未 commit**）——`evaluation/base_model.py`：
+- **窗口最终确定（split-sample 验证，非网格最大值）**：短=**2min**、长=**4h**，BTC/ETH/SOL
+  USD-M 合约上拆半（前 1.25 年/后 1.25 年）复现,两半 NW 均 >2。之前口头定的 15min/4h 被
+  用户追问后证伪（15min 对 ETH 两半均不到 2）；1min 因买卖价差反弹噪声风险未采用，2min 是
+  三币两半都稳的最短点。
+- **动量/反转不再是两个预判方向的独立基准，合并成一个 trailing-return 家族**：
+  `base_factor_scores(data)` 只出原始数值（不取符号），方向留给 `incremental_significance`
+  的回归系数决定——BTC/SOL 在短窗口自然拟合出负载荷（反转），ETH 在长窗口自然拟合出正载荷
+  （动量），不需要人工分币判定。真实数据依据：三币窗口网格上动量/反转的符号本就不一致
+  （BTC/SOL 短端反转显著、长端弱；ETH 短端弱、长端动量显著），验证过合约与现货结论一致。
+- **资金费率基准：测过、放弃**。简单均值（1–21 期，8h–168h）+ 三种非线性构造（符号/z-score/
+  极端分位）在三币三 horizon 上全部测过，最高才 NW≈1.83（ETH 极端事件版），未过显著性门槛，
+  放弃写入 V1。复活条件：横截面构造，或更丰富的持仓/清算数据。
+- **波动率基准：维持推迟**（1.3 讨论初期已判，见上文范围收窄记录）。
+- **`incremental_significance(candidate_score, label, data, lag)`**：候选与基准都用同一套
+  `sign(score) × label` 因子收益流构造（`_factor_return_stream`），FWL 定理提取截距做
+  NW 显著性检验（不能直接对"带截距回归"的残差测均值——那样恒为零，是本次开发中修的第一个
+  真 bug）。**第二个真 bug**：百万行真实数据上，完全克隆的候选因子系数精确拟合成 1.0/0/0，
+  但 `lstsq` 舍入误差在残差里留下 ~1e-16 量级噪声，NW 把这噪声放大成虚假的 |t|=3.6——加了
+  相对方差护栏（残差方差 < 候选流方差的 1e-8 倍 → 直接判 NaN）修正。真实数据端到端验证
+  （ETH 1h horizon）：完全克隆→NaN，纯随机偏置信号→NW 1.06（弱），真实独立信号→NW 69.28
+  （强烈存活）——三种情况判决正确。
+- 数据源：全部合约（USD-M futures），遵守"暂时不做现货"决定。
+
+**V1 horizon 带下扩：15min–4h → 1min–4h（2026-07-02，用户拍板）**：
+- 补测 1min/5min horizon（此前只测过 15min/1h/4h）,发现短窗口(2min)反转效应在
+  **5min horizon 上最强、三币两半都稳健**——普遍强于 15min（如 ETH 从 -2.53/-2.82 升到
+  -3.55/-5.83）。若 V1 从 15min 起步,等于把已知最强的 horizon 排除在挖掘范围外。
+  1min horizon 本身偏弱不稳（ETH 两半 -1.02/-4.63,不一致,疑似 forward 标签在 1 分钟尺度
+  被买卖价差反弹污染）,但用户决定连同 1min 一起下扩,个体候选因子在 1min 上仍要过同样的
+  NW/split-sample 门槛，不因为在带内就免检。
+- 长窗口(4h,ETH 动量)在 1min/5min 上测不出效应（尺度失配，4h 趋势预测不了下一分钟）——
+  长端 15min–4h 结论不受影响。
+- 已改：ADR-0014 护栏①、PLAN.md V1/V2 分轨说明。1.3 的 base_model.py **不受影响**——
+  `SHORT_WINDOW=2min`/`LONG_WINDOW=4h` 是输入回看窗口，和 horizon 是两个独立的轴
+  （见对话记录：用户曾问"2min/4h是输入窗口还是horizon"，已澄清）。
+- **下一步**：1.4（IC 衰减曲线，`_decay_profile`，**horizon 网格取值待拍**，V1 锁定
+  **1min–4h** 带内，须覆盖 1/5/15min + 1h/4h 这几个已实测的关键点）；或 1.5（多 horizon
+  编排 + 三合一接线：换 vol-norm 标签 + 接 walk-forward + `incremental_significance`
+  接入 Research Gate）。顺序与用户确认。
+
+**SOL 极端反转探索性研究（2026-07-02，纯分析，未写代码，未改 base_model.py）**：
+用 1.3 的短窗口(2min trailing return)在 SOL 合约上叠加事件化(仅在幅度超过滚动 30D
+99.9% 分位时出手，防泄漏用 trailing 分位而非全样本分位——过程中发现并修正了一次全样本
+分位造成的前视泄漏)，15min horizon，反转方向：
+- **初步结果看着不错**：毛利 +17.7bp/笔（盖过 9bp 手续费墙），NW 达 3.05，按月拆
+  27/30 月均笔为正，月度 ICIR 0.87——是这整轮探索里唯一经得住多层验证的候选信号形态。
+- **但深入压力测试后判定当前不可用**：①10 倍杠杆下最差单笔(-19.21%)会直接爆仓，且五笔
+  最差交易挤在同一次崩盘的 30 分钟内（高度相关，非独立尾部风险）；②波动率止盈止损**让
+  情况变差**（反转策略的固有特性：利润常需先经历逆向波动才展开，止损在反转发生前就把
+  仓位震出局）；③按 30 分钟去重砍掉扎堆信号后，毛利从 17.7bp 崩到 2.2bp——说明相当一部分
+  表观利润本就来自和尾部风险绑定的同一批崩盘期交易，去风险和保利润不可兼得；④用"单笔最多
+  亏 2% 本金"倒推仓位，扣实际费用后月均收益为**负**（-0.06%）。
+- **结论**：这个具体信号在统计层面真实（Research Gate 会通过），但扣风险扣成本后站不住
+  （Trading Gate/迭代4 会拒绝）——是"统计显著≠能交易"这条原则的一次完整实测案例，值得
+  作为反面教材保留，不代表短窗口反转基准本身没用（它仍然是合格的 1.3 参照物，见上文）。
+- 未触发任何代码改动：`base_model.py` 的角色是给候选因子当基准，不是自己被当成候选因子
+  去优化止损/仓位——这次探索是"如果有人把它直接当因子用会怎样"的压力测试，结果支持
+  现有设计（基准就该只是基准）。
+
+**迭代 1.4 设计已定案（2026-07-03，用户拍板，尚未写代码——明天开写）**：
+
+- **horizon 网格（用户指定，9 点）**：`1min, 5min, 10min, 15min, 30min, 45min, 1h, 2h, 4h`。
+  短端加密覆盖反转效应密集区（1.3 实测 5min/15min 最强），长端稀疏覆盖动量类效应
+  （ETH 在 1h/2h/4h 上的窗口）。这组值要写成 `evaluation/metrics.py` 里的常量
+  `V1_HORIZON_GRID`（命名待写代码时确认），版本化、不可被挖掘循环搜索。
+- **`_decay_profile` 函数设计**（PLAN 1.4 原定位置 `evaluation/metrics.py`）：
+  - 签名大致为 `_decay_profile(data, scores, horizons=V1_HORIZON_GRID, price_column="close", execution_lag_bars=1) -> list[DecayPoint]`；
+  - `DecayPoint` 是个 frozen dataclass：`horizon: pd.Timedelta, ic: float, nw_tstat: float`；
+  - 对网格里每个 horizon：调 1.2 的 `_vol_norm_returns(data, horizon, ...)` 算标签，和
+    `scores` 对齐算 `ic = corr(scores, label)`；NW 显著性走 `factor.py` 现有
+    `_nw_ic_tstat` 同款口径（`(score-mean)*(label-mean)` 贡献流,不是 `base_model.py`
+    的 `sign(score)*label` 因子收益流——**这两种 NW 口径不同,decay profile 测的是
+    IC 本身的显著性,不是方向性赌注的显著性**,注意别混用）；lag 用
+    `_bars_per_horizon(data.index, horizon)`。
+  - 边界：数据不足（对齐后 <2 行）→ 该 horizon 返回 `(NaN, NaN)`，不报错，不中断其余
+    horizon 的计算。
+  - **不做 walk-forward 接线**（和 1.2/1.3 一样，评估流程接线统一在 1.5）。
+- **TDD 计划**（今天写到一半，已回退保证仓库干净——`tests/test_metrics.py` 现在
+  是 121 tests 全绿的干净状态，明天从这里继续）：
+  1. `V1_HORIZON_GRID` 常量值校验；
+  2. `_decay_profile` 返回的点数、顺序、horizon 值和输入网格一致；
+  3. 合成数据验证：分数按某个 horizon 的标签构造出强相关，`_decay_profile` 应在
+     **匹配的 horizon 上报出高 IC**，其余 horizon 上较低——验证"读出来的衰减曲线
+     形状是对的"，不是空转；
+  4. NW 的 lag 确实随 horizon 变化（用 `_bars_per_horizon`），不是写死常量；
+  5. 数据不足时该 horizon 返回 NaN 不报错，不影响其余 horizon；
+  6. 不传 `horizons` 参数时，默认吃 `V1_HORIZON_GRID`。
+- **明天开工顺序**：先写这批测试（红），再写 `_decay_profile` 实现（绿），跑真实合约
+  数据验证（BTC/ETH/SOL 上跑一次 3.1.3 的两个基准 score，看衰减曲线形状是否符合
+  已知规律——短端反转 15min/5min 峰值、ETH 长端动量 1h 附近峰值——作为端到端合理性检查，
+  不是新增结论，是复核 1.4 实现和已知手工测试结果一致）。
 
 ## Next steps
 

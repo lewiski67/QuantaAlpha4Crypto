@@ -45,9 +45,16 @@ significance at long horizons.
   design doc §3.5 ("judged as an explicit directional market-timing bet")
   extends to all V1 symbols. Do not present V1 results as market-neutral.
 - **Guardrails (mandatory in V1):**
-  1. **Horizons confined to intraday scale (~15min–4h).** Raw-return labels at
-     daily+ horizons are dominated by a single market trend path and are not
-     statistically honest; long horizons reopen only with V2 residual labels.
+  1. **Horizons confined to intraday scale (~1min–4h; widened from ~15min–4h
+     on 2026-07-02).** Real BTC/ETH/SOL futures split-sample testing found the
+     short-window (2min lookback) reversal effect is strongest and most
+     robust at a **5min** forward horizon (stronger than 15min for all three
+     symbols); 1min horizon labels are noisier (bid-ask-bounce-like
+     instability, one split-sample half often weak) but the band's floor
+     includes it per user decision -- individual candidates at 1min still
+     face the same NW/split-sample bar. Raw-return labels at daily+ horizons
+     are dominated by a single market trend path and are not statistically
+     honest; long horizons reopen only with V2 residual labels.
   2. **TSMOM benchmark retained.** The Base Factor Model keeps the naked
      time-series-momentum benchmark; candidates must show incremental IC over
      it (clone killer). `residualize(...)` as a label transform is deferred.

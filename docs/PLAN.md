@@ -58,7 +58,7 @@ _开始日期: 2026-06-30_
 |---|------|------|------|
 | 1.1 | walk-forward + purge/embargo（TDD） | `evaluation/walk_forward.py` | **先测**：purge 后训练/测试无重叠；`_make_windows(purge_bars=horizon, embargo_bars=0)` |
 | 1.2 | vol-norm 标签（TDD）【V1 重定义，ADR-0014】 | `evaluation/metrics.py` | `_vol_norm_returns`。**`_market_residual`（OLS）推迟到 V2**——V1 标签 = vol-norm 后的 raw forward return（方向性），见 ADR-0014 |
-| 1.3 | Base Factor Model（基准用途）【V1 重定义，ADR-0014】 | `evaluation/base_model.py` | BTC-proxy 市场、TSMOM(20)、波动率(20)、资金费率均值(8期)。V1 仅作**增量 IC 基准**（克隆杀手：候选须对裸 TSMOM 有增量）；`residualize(...)` 作为标签变换推迟到 V2 |
+| 1.3 | ✅ Base Factor Model 完成（2026-07-02，121 tests）【V1 重定义，ADR-0014】 | `evaluation/base_model.py` | 最终形态与原计划不同：**动量/反转合并成一个 trailing-return 家族**（不预判方向，回归系数决定），两个固定窗口——短=2min、长=4h（split-sample 实测，非网格最大值，三币 BTC/ETH/SOL 合约验证）。**资金费率、波动率基准均测过后放弃**（无信号/无方向定义，详见 HANDOFF）。`incremental_significance(candidate_score, label, data, lag)`：候选与基准同构 `sign(score)×label` 因子收益流，FWL 提取截距做 NW 检验，含大样本浮点噪声护栏。`residualize(...)` 残差化标签变换仍推迟到 V2 |
 | 1.4 | IC 衰减曲线（计算层） | `evaluation/metrics.py` | `_decay_profile(scores, returns, horizons)`，horizon 是读出来的不是搜出来的。**`horizons` 网格取值未定**——业界无统一标准，须按 crypto 机制尺度自定（秒级→日级，够宽够密罩住经济上合理的整条带），这是必须自己拍的设计项 |
 | 1.5 | 多 horizon 评估编排 + 标签/walk-forward 统一接线 | `evaluation/factor.py` | `evaluate_directional_factor` 从单 horizon 升级为吃 `horizons` 网格、返回整条 profile 进 `FactorEvaluation`。**评估对象是整条曲线，不塌缩成单点**。**同一次手术完成三件事**（决策于 1.2,避免混血过渡态）：①标签从裸 forward return 换成 **vol-norm 版**（除以 1.2 的 `_vol_norm_returns` 分母,V1/ADR-0014）；②接入 1.1 的 walk-forward 切窗（pooled OOS NW + ICIR 口径见 HANDOFF）；③审计改为每因子跑一次、不随 horizon 数翻倍 |
 
@@ -66,7 +66,8 @@ _开始日期: 2026-06-30_
 此处可能直接证伪迭代 0 看到的"信号"——那也是有价值的结果。
 
 > **V1/V2 分轨（ADR-0014，2026-07-02）：** V1 = **方向性**（vol-norm raw return 标签，
-> 单腿事件化交易，horizon 锁定 ~15min–4h；BTC 条款推广到全部币）；V2 = 市场中性
+> 单腿事件化交易，horizon 锁定 **~1min–4h**（2026-07-02 从 15min–4h 下扩，实测 5min
+> 是反转效应最强最稳的 horizon）；BTC 条款推广到全部币）；V2 = 市场中性
 > （`_market_residual` 残差标签 + 对冲，解锁日级以上 horizon）。评估机器标签无关,
 > 切换只换标签函数。V1 三护栏：horizon 锁短端 / TSMOM 增量基准 / 库相关性检查
 > + 风险层按 ~1 个相关赌注计。
