@@ -95,6 +95,39 @@ def test_purge_is_by_timestamp_across_a_gap_not_bar_count():
     ]
 
 
+def test_step_defaults_to_test_window_so_test_segments_are_seamless():
+    # No `step` passed: it inherits `test_window`, so consecutive test segments
+    # tile the timeline back-to-back (no gap, no overlap). This is what keeps a
+    # pooled OOS stream a single contiguous span.
+    index = _index(["BTCUSDT"], n=12, freq="1D")
+    windows = build_walk_forward_windows(
+        index, horizon="1D", train_window="3D", test_window="2D"
+    )
+    assert len(windows) >= 2
+    strides = {
+        (b.test_start - a.test_start) for a, b in zip(windows, windows[1:])
+    }
+    assert strides == {pd.Timedelta("2D")}  # stride == test_window
+    for earlier, later in zip(windows, windows[1:]):
+        assert later.test_start == earlier.test_end  # seamless: no gap, no overlap
+
+
+def test_explicit_step_overrides_the_default():
+    # An explicit step decouples the stride from test_window. step < test_window
+    # makes the test segments overlap (advanced/CPCV use); the caller owns that.
+    index = _index(["BTCUSDT"], n=12, freq="1D")
+    windows = build_walk_forward_windows(
+        index, horizon="1D", train_window="3D", test_window="2D", step="1D"
+    )
+    assert len(windows) >= 2
+    strides = {
+        (b.test_start - a.test_start) for a, b in zip(windows, windows[1:])
+    }
+    assert strides == {pd.Timedelta("1D")}  # stride follows the explicit step
+    # test_window (2D) > step (1D) -> consecutive test segments overlap.
+    assert windows[1].test_start < windows[0].test_end
+
+
 def test_no_partial_trailing_window():
     # Windows stop before spilling past the data: no test segment exceeds the
     # last available timestamp.

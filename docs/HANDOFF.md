@@ -6,7 +6,7 @@ Living document for seamless project continuity. Update at meaningful
 checkpoints (not every turn): when task state, decisions, or next steps change.
 Stable facts (architecture, conventions, commands) belong in `CLAUDE.md`, not here.
 
-_Last updated: 2026-07-02_
+_Last updated: 2026-07-02 (step-default refinement)_
 
 ## Current state
 
@@ -64,8 +64,19 @@ _Last updated: 2026-07-02_
 - 边界层 vs 样本层：**等价**（同一不等式移项 `entry+horizon≥test_start` ⟺ `entry≥test_start−horizon`），
   实现选边界层（单 cutoff 向量化）、输出样本索引。当前真实数据（37 币 1m，Δ 恒 60s 零缺口，
   实测）均匀→A≡B；选时间戳法是口径卫生（与标签同源）+ 抗未来混频，非当前数据必需。
-- 测试 `tests/test_walk_forward.py`（新，7 例）：tracer 两段切分 / purge 核心保证 /
-  **缺口回归（时间戳≠根数）** / 无尾部残窗 / 空索引→[]（守死循环）/ 非正窗口→raise。
+- 测试 `tests/test_walk_forward.py`（新，9 例）：tracer 两段切分 / purge 核心保证 /
+  **缺口回归（时间戳≠根数）** / **step 默认继承 test_window→test 段无缝** / **显式 step 覆盖（可重叠）** /
+  无尾部残窗 / 空索引→[]（守死循环）/ 非正窗口→raise。
+- **step 默认继承 test_window**（方案2，追加于 1.1）：签名 `step=None`，不传时 `step=test_window`。
+  理由：pooled OOS NW 的正确性前提是 **`step==test_window`**（连续 test 段错位量=step、段长=test_window，
+  相等才无缝平铺→pooled 流是单一连续 OOS 区间）。`step<test` 重叠→bar 双计；`step>test` 留缝→
+  拼接处伪自相关。原来两个默认值都 30D 只是**撞巧相等**、代码不强制，改 test 忘改 step 会**静默算错**。
+  现在默认做对（无缝），仍允许显式传 step 做 CPCV/加密 ICIR 采样等高级用法（责任交调用方）。
+- **pooled OOS NW 口径（1.5 待接线的既定设计，已讨论定案）**：headline 显著性 = **各 test 段逐 bar
+  贡献流 `x_t=(score−μ_段)(ret−μ_段)` 拼接后跑一次 NW**（每段用段内 μ 去中心化再拼，避免跨段均值污染）。
+  默认 `step==test_window` 下 test 段日历连续→拼接缝是**真相邻**、NW 该保留该项,**无需分段掩码**
+  （早前"接缝伪自相关"顾虑仅在 step>test 时成立，默认配置下作废）。稳定性另走 **ICIR = 各窗口 IC 的
+  mean/std**（显著性要合 bar 做大功效、稳定性要保留窗口离散度，两条线相反,不互替）。
 - **下一步 1.2**：vol-norm + 市场残差标签（OLS），`evaluation/metrics.py`。切窗器已就位，
   但**尚未接进 `factor.py` 评估流程**（walk-forward 编排属 1.5 多 horizon 编排一并接线）。
 

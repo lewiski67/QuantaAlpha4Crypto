@@ -41,7 +41,7 @@ def build_walk_forward_windows(
     horizon: str | pd.Timedelta,
     train_window: str = "180D",
     test_window: str = "30D",
-    step: str = "30D",
+    step: str | pd.Timedelta | None = None,
     execution_lag_bars: int = 1,
 ) -> list[WalkForwardWindow]:
     """Build rolling, two-segment (train/test) walk-forward windows.
@@ -55,9 +55,18 @@ def build_walk_forward_windows(
     (``execution_lag_bars``) and exits ``horizon`` later, so it leaks iff
     ``entry + horizon >= test_start``. Purge by timestamp, not bar count, so
     irregular bar spacing (gaps) cannot mis-purge.
+
+    ``step`` defaults to ``test_window`` when omitted, so consecutive test
+    segments tile the timeline back-to-back (no gap, no overlap) -- the condition
+    that keeps a pooled out-of-sample stream a single contiguous span. Pass an
+    explicit ``step`` only for advanced use (``step < test_window`` overlaps the
+    test segments; ``step > test_window`` leaves gaps); the caller then owns the
+    pooling consequences.
     """
     if len(sample_index) == 0:
         return []
+    if step is None:
+        step = test_window
     timestamps = sample_index.get_level_values("timestamp")
     start_at = pd.Timestamp(timestamps.min())
     end_at = pd.Timestamp(timestamps.max())
