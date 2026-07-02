@@ -6,7 +6,7 @@ Living document for seamless project continuity. Update at meaningful
 checkpoints (not every turn): when task state, decisions, or next steps change.
 Stable facts (architecture, conventions, commands) belong in `CLAUDE.md`, not here.
 
-_Last updated: 2026-07-02 (step-default refinement)_
+_Last updated: 2026-07-02 (1.2 完成: _vol_norm_returns)_
 
 ## Current state
 
@@ -77,8 +77,57 @@ _Last updated: 2026-07-02 (step-default refinement)_
   默认 `step==test_window` 下 test 段日历连续→拼接缝是**真相邻**、NW 该保留该项,**无需分段掩码**
   （早前"接缝伪自相关"顾虑仅在 step>test 时成立，默认配置下作废）。稳定性另走 **ICIR = 各窗口 IC 的
   mean/std**（显著性要合 bar 做大功效、稳定性要保留窗口离散度，两条线相反,不互替）。
-- **下一步 1.2**：vol-norm + 市场残差标签（OLS），`evaluation/metrics.py`。切窗器已就位，
-  但**尚未接进 `factor.py` 评估流程**（walk-forward 编排属 1.5 多 horizon 编排一并接线）。
+- **因子因果性审计改为强制**（2026-07-02，方案A，泄漏审计发现的独立缺口，非 PLAN 1.x 条目）：
+  `evaluate_directional_factor` 的 `input_lookback_window` 不传即 raise——审计（16 抽查点
+  截断重算对拍，验证因子无前视+声明回看诚实）从选配变成每个因子进评估的强制关卡。原状态下
+  不传参数审计整体跳过，`shift(-1)` 类非因果因子会静默拿高 IC，是当时最实在的泄漏口。
+  连带:`judge_single_factor` 增加必传 `input_lookback_window` 参数;CLI round config 把
+  `input_lookback_window` 列为必填字段并接线(原来 CLI 从不读该键→评估层永远 None)。
+  防未来不依赖声明诚实(审计右边界硬编码在 t),声明只定左边界(过去用量诚实性)+实盘预热语义。
+  mining 中间层(batch_runner/proposal/runner/round)的 `None` 默认保留——真实 CLI 流已必填,
+  None 流到评估层会带清晰错误信息失败;该链路迭代 3 重写时再收紧。多频因子声明=各成分回看
+  时长的最大值(时间量,非根数),与审计机制天然兼容。
+- **V1/V2 分轨决策（2026-07-02，ADR-0014,用户拍板）**：经两天 alpha/beta 定位长讨论
+  （方向性 vs 市场中性两条路径、对冲机制、费用算术、事件化交易),用户决定 **V1 = 方向性**：
+  标签 = vol-norm 后的 **raw forward return**（无市场残差化）,单腿事件化交易 BTC/ETH/SOL,
+  horizon 锁 ~15min–4h。**V2 = 市场中性**：`_market_residual` 残差标签 + β 对冲,解锁日级+。
+  评估机器标签无关,V2 切换只换标签函数。V1 三护栏（缺一会踩克隆/伪显著/伪分散坑）：
+  ①horizon 锁短端（raw 标签日级+被大盘单一趋势主导,统计失效）；②Base Factor Model 保留
+  TSMOM 增量基准（克隆杀手）；③库相关性检查 + 风险层按 ~1 个相关赌注计。事件化的阈值
+  不进因子层（零自由参数）——2.5 分桶单调性验证"越极端越准"结构,阈值留部署层对费用算术定。
+  关键实测依据：corr(ETH,BTC)=0.82,大盘解释 ETH 方差 67%,残差 σ≈57% 总 σ
+  （`alpha_beta_decomposition.png`,真实日线 2024–2026）；费用算术:同 horizon 单腿占优,
+  但短 horizon 毛利(IC×σ≈1–4bp)vs 固定费用(taker RT 8–10bp)是 V1 主要生死线,
+  迭代 4 按事件化换手裁决。old/QuantaAlpha 是第三条路径（横截面相对收益/指增：CSRankNorm
+  标签+Top-k 纯多头+对标基准）,N=2–3 退化不可迁移（ADR-0012 Context 第 1 条）。
+- **挖掘框架评估结论（2026-07-02）**：`mining/` 骨架 + 设计文档 §3.2/§3.8 目标**保留,
+  不为 V1/V2 分建两套**（生成与判决解耦→标签无关）；接线重做仍按迭代 3 原计划。V1/V2 新增
+  两条并入迭代 3（已写进 PLAN 3.2/3.3/3.5 与设计文档 §3.2/§3.12）：①产物全链路加
+  `label_mode` 轨道字段,库/feedback 按轨隔离；②novelty feedback 的**库快照按轨道切**
+  （同一机制在两种标签下=两个独立假设,混喂快照会让 LLM 误跳过未测的另一轨版本）；
+  §3.12 进化搜索维持 DEFERRED,其 fitness 公式是 V2 语言,V1 语境须改为对 TSMOM 基准的增量。
+迭代 1.2 完成（2026-07-02,TDD,108 tests 全绿,**未 commit**）:
+- `evaluation/metrics.py` 新增 `_vol_norm_returns`（V1 标签,ADR-0014）+ `_trailing_volatility`
+  + `_VOLATILITY_FLOOR`。标签 = `_forward_returns / (σ̂_trailing × √bars_per_horizon)`。
+- **设计决定全部逐项与用户确认**（讨论+实验依据,均真实数据）:①窗口 trailing **7D 按时间戳**
+  per-symbol（1D 会事件自吞噬+分母内生;20D 对 crypto regime 太钝;7D 整除周周期）;
+  ②**简单滚动 std** 非 EWMA（EWMA 事件时刻分母瞬涨 31% 压扁事件标签;实测两者标签相关
+  0.997,判决无差,少一个 λ 参数）;③输入=面板原生 bar 简单收益（**频率无关**,调用方重采样,
+  与信号频率一致）;④**满窗 warmup**（不足 7D→NaN,每币丢开头 7D）;⑤floor **仅防零**
+  （ε=1e-12,不塑形）;⑥**√h 缩放**（对下一小时真实 RV 赛马:与直接 h 尺度估计**平局**
+  （RMSE/QLIKE/Spearman 差 <1% 且方向翻覆）,工程定胜负——一条 σ̂ 序列服务全 horizon 网格;
+  √h 恒定偏差 ~4% 对 IC 无影响;两半自洽实验:直接法自噪 ±5%、√h 法 ±2.4%（厚尾放大,
+  高斯理论 0.7% 不成立））;⑦**接线留 1.5**（PLAN 1.5 行已写明三合一手术:换标签+接
+  walk-forward+审计每因子一次）。
+- 真实数据验证（BTC 1m 129 万根,0.76s）:**归一化标签 std=1.0035≈1**（单位方差自洽,
+  √h 与 trailing σ̂ 咬合正确）;首个有效标签恰在面板开始+7D;全部有限;|label| p50=0.45,
+  p99=3.6。
+- 测试 `tests/test_metrics.py` +10 例:除以 trailing std / √h 缩放（精确 −0.05 手算例）/
+  **缺口时间戳窗口回归**（bar-count 会跨缺口误取）/ 默认 7D 满窗 warmup / 零波动 floor 有限 /
+  **per-symbol 自归一化**（10× 振幅两币标签相等）/ 分钟频 / 亚 bar horizon raise / 非正窗口 raise。
+- **下一步 1.3（V1 重定义）**：Base Factor Model 仅作增量 IC 基准（TSMOM(20)/波动率(20)/
+  资金费率均值(8期)）,`residualize()` 推迟 V2;或直接跳 1.4（衰减曲线,**horizon 网格待拍**,
+  V1 锁 ~15min–4h）——顺序可与用户确认。
 
 ## Next steps
 

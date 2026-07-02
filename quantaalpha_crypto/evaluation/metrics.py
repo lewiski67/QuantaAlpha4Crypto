@@ -70,6 +70,91 @@ def _forward_returns(
     return pd.concat(pieces).sort_index()
 
 
+# Denominator floor for volatility normalization: guards exact zero volatility
+# (degenerate/synthetic data) against division blowups. Deliberately a machine
+# epsilon, never a substantive lower bound -- flooring real quiet-period sigma
+# would rewrite labels (decision 2026-07-02, see HANDOFF).
+_VOLATILITY_FLOOR = 1e-12
+
+
+def _trailing_volatility(
+    data: pd.DataFrame,
+    window: pd.Timedelta,
+    price_column: str = "close",
+) -> pd.Series:
+    """Per-symbol trailing volatility of per-bar returns, by timestamp window.
+
+    Simple rolling std (pandas ddof=1) of simple per-bar returns on the panel's
+    native cadence. The window is time-based -- ``(t - window, t]`` by
+    timestamp -- so irregular gaps cannot smuggle stale bars in by count.
+    Full-window warmup: bars with less than ``window`` of history since the
+    symbol's first bar are NaN.
+    """
+    pieces = []
+    for _symbol, symbol_data in data.sort_index().groupby(level="symbol", sort=False):
+        close = symbol_data[price_column].astype("float64")
+        timestamps = close.index.get_level_values("timestamp")
+        per_bar = pd.Series(close.to_numpy(), index=timestamps)
+        volatility = per_bar.pct_change().rolling(window).std()
+        elapsed = timestamps - timestamps[0]
+        volatility[np.asarray(elapsed < window)] = np.nan
+        pieces.append(pd.Series(volatility.to_numpy(), index=close.index))
+    if not pieces:
+        return pd.Series(dtype="float64")
+    return pd.concat(pieces).sort_index()
+
+
+def _vol_norm_returns(
+    data: pd.DataFrame,
+    horizon: pd.Timedelta,
+    price_column: str = "close",
+    vol_window: str | pd.Timedelta = "7D",
+    name: str = "vol_norm_return",
+    execution_lag_bars: int = 1,
+) -> pd.Series:
+    """Volatility-normalized Forward Returns -- the V1 label (ADR-0014).
+
+    ``_forward_returns`` divided by a per-symbol trailing volatility scaled to
+    the horizon: ``sigma_h = sigma_bar * sqrt(bars per horizon)``. Measures each
+    move in units of the symbol's own typical move so IC weighs every symbol and
+    period equally instead of being dominated by high-volatility samples.
+
+    Fixed conventions (decided 2026-07-02, evidence in HANDOFF; do not turn
+    these into searchable parameters):
+      * ``vol_window`` defaults to trailing **7D by timestamp** -- tracks crypto
+        vol regimes, averages the weekly cycle, and stays a *baseline* during
+        the very bursts event factors trade (an EWMA would inflate the
+        denominator inside the event and dampen exactly the returns under
+        measurement).
+      * **Simple rolling std** on the panel's native bar cadence; the caller
+        picks the cadence by resampling the panel (signal-frequency match).
+      * **sqrt-h scaling** to the horizon: a horse race against direct h-scale
+        estimation on real data was a statistical tie, and one per-bar sigma
+        series serves the whole horizon grid.
+      * **Full-window warmup** (leading ``vol_window`` per symbol is NaN) and an
+        epsilon-only denominator floor.
+    """
+    horizon_delta = pd.Timedelta(horizon)
+    window_delta = pd.Timedelta(vol_window)
+    if window_delta <= pd.Timedelta(0):
+        raise ValueError("vol_window must be positive")
+    bars = _bars_per_horizon(data.index, horizon_delta)
+    if bars < 1:
+        raise ValueError(
+            "horizon rounds to zero bars at this panel cadence; "
+            "vol normalization needs a horizon of at least one bar"
+        )
+    forward = _forward_returns(
+        data,
+        horizon_delta,
+        price_column=price_column,
+        execution_lag_bars=execution_lag_bars,
+    )
+    volatility = _trailing_volatility(data, window_delta, price_column=price_column)
+    denominator = (volatility * bars**0.5).clip(lower=_VOLATILITY_FLOOR)
+    return (forward / denominator).rename(name)
+
+
 def _rank_ic(scores: pd.Series, returns: pd.Series) -> float:
     if len(scores) < 2:
         return float("nan")
