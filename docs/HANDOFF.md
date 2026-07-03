@@ -6,7 +6,7 @@ Living document for seamless project continuity. Update at meaningful
 checkpoints (not every turn): when task state, decisions, or next steps change.
 Stable facts (architecture, conventions, commands) belong in `CLAUDE.md`, not here.
 
-_Last updated: 2026-07-03 (1.4 设计定案，待写代码)_
+_Last updated: 2026-07-03 晚 (ADR-0016 记分卡定案；1.4 细分为 1.4.0–1.4.10 专节；文档已全改，代码未动)_
 
 ## Current state
 
@@ -206,10 +206,8 @@ _Last updated: 2026-07-03 (1.4 设计定案，待写代码)_
 - 已改：ADR-0014 护栏①、PLAN.md V1/V2 分轨说明。1.3 的 base_model.py **不受影响**——
   `SHORT_WINDOW=2min`/`LONG_WINDOW=4h` 是输入回看窗口，和 horizon 是两个独立的轴
   （见对话记录：用户曾问"2min/4h是输入窗口还是horizon"，已澄清）。
-- **下一步**：1.4（IC 衰减曲线，`_decay_profile`，**horizon 网格取值待拍**，V1 锁定
-  **1min–4h** 带内，须覆盖 1/5/15min + 1h/4h 这几个已实测的关键点）；或 1.5（多 horizon
-  编排 + 三合一接线：换 vol-norm 标签 + 接 walk-forward + `incremental_significance`
-  接入 Research Gate）。顺序与用户确认。
+- **下一步**：~~1.4（IC 衰减曲线）~~ → 已被 ADR-0016 重排为 **1.4.0–1.4.10 记分卡
+  计算层专节**（PLAN 有独立小节,逐子任务列了已知的坑）,见下方 2026-07-03 晚记录。
 
 **SOL 极端反转探索性研究（2026-07-02，纯分析，未写代码，未改 base_model.py）**：
 用 1.3 的短窗口(2min trailing return)在 SOL 合约上叠加事件化(仅在幅度超过滚动 30D
@@ -262,6 +260,101 @@ _Last updated: 2026-07-03 (1.4 设计定案，待写代码)_
   数据验证（BTC/ETH/SOL 上跑一次 3.1.3 的两个基准 score，看衰减曲线形状是否符合
   已知规律——短端反转 15min/5min 峰值、ETH 长端动量 1h 附近峰值——作为端到端合理性检查，
   不是新增结论，是复核 1.4 实现和已知手工测试结果一致）。
+
+**ADR-0015 评估范式重定标（2026-07-03，用户拍板，文档已改、代码未动）**：
+
+起因：CLV 因子探索（用户提出的 Close Location Value，bar 内收盘位置）。先按现状管线测了
+bar 级全样本 IC+NW（raw CLV 三币全负 IC、1min–15min \|t\| 2–6.5、4h 衰减到不显著；delta/
+reversal 变体弱于 raw，无增量），后又换 vol-norm 标签复测（数字几乎不变——比值型因子对
+vol-norm 不敏感）。用户追问"数据量越大 NW 越大，这东西怎么区分因子"，引发全天方法论审查，
+每一步都做了 WebSearch 验证（不凭训练记忆），最终推翻现状评估口径：
+
+- **核心结论**：单标时序因子评估存在两条正统——学术推断传统（预测性回归斜率 + HAC/NW，
+  全样本）和交易评估传统（sign 策略收益流 + 一致性 + 多重检验修正，STW 1999 / CFM 两世纪
+  趋势 / MOP 2012 / PSR-DSR / 机构 OOS 清单）。前者的判读惯例（t>2/3）在 T≈几百的月频/日频
+  regime 校准，**不能平移到 n≈130 万分钟 bar**（NW 修正后有效样本仍 10⁴–10⁵，任何结构性
+  非零相关都显著，t 只剩"不显著=可信死刑"单向信息）。佐证：GHLZ 2018 日内动量拿着高频数据
+  仍按"一天一观测"检验；从业者记分牌（WorldQuant Fitness、CTA 清单）无 t-stat 无 IC。
+- **新口径（ADR-0015）**：核心=Factor Return Stream 毛 Sharpe（记分牌）+ 跨币×跨窗口符号
+  一致性（真假，验证宇宙=本机 35 个合约币、分流动性层，交易宇宙仍 BTC/ETH/SOL）+
+  incremental significance（对 base model，构造不变）。显著性=日级聚合流（UTC 日求和 X_d，
+  ~900 观测，点估计精确保持、日内自相关吸收进块方差）的普通 t=日频 Sharpe 检验，**只当
+  杀手锏**（|t|>3 仅否决权，过线≠好），最终须算在 walk-forward OOS 流上（in-sample t 不作数）；
+  升级路径 t→PSR（厚尾）→DSR（迭代 2 Trial Registry）。IC/rank IC 降为诊断（专管"越极端
+  越准"的幅度排序问题，事件化前提/2.5 分桶单调性）。
+- **NW 处置**：bar 级 NW（`_nw_ic_tstat` 及 lag=`_bars_per_horizon` 口径）**冻结不删**——
+  它是学术传统的正确实现，错在 regime 不在血统。`_nw_tstat` 原语保留。**若日后要用 NW 的
+  迁移规范已记进 ADR-0015 §Decision 5**：只作用于日级序列、lag_days 默认 1 但须先画 X_d 的
+  ACF 实证（crypto 24/7 无收盘、"日"边界无独立性依据）、多币同日合进一个块（corr 0.82，
+  symbol-day 分块会虚报 n 3 倍）、`incremental_significance` 的残差流同病同药（1.5 接线时做）。
+- **文档已改**：ADR-0015 新建；PLAN 0.3 blockquote 加修正注 + 1.4/1.5/2.2 重定标；设计文档
+  §3.5 指标表重写 + overlapping-returns caveat 更新；CONTEXT.md 受控语言更新（Factor Return
+  Stream 升核心对象、IC Stability→Sign Consistency、Incremental IC→Incremental Significance、
+  Decay Profile y 轴改 stream Sharpe、Research Gate/Factor Evaluation Report 谓词集重写）。
+- **代码未动（下一批实现，按 TDD）**：①`_decay_profile`（1.4）按新 y 轴实现；②日级分块
+  杀手锏（`_daily_block_tstat` 类原语，测试清单已在会话中列出：点估计不变性/iid 等价/自相关
+  收缩/tz 日边界/缺口日/多币合块）；③`mining/loop.py` 阈值 2.0→3.0、`"signal"`→
+  `"passes-noise-screen"`；④CLV 按新口径重验（bar 级"显著"结论全部待复核；方向一致性与
+  4h 死刑结论仍立）。
+- **CLV 探索现状**：脚本在 `$CLAUDE_JOB_DIR/tmp/`（会话临时区，未入库）；三步验证只完成
+  vol-norm 复测，split-sample 与 incremental_significance 未做——等新评估口径落地后按新
+  标准重跑，不在旧口径上继续。
+- **V1 挖掘范围收紧为纯单标时序（2026-07-03，用户拍板）**：V1 候选因子只允许单标
+  时序构造——因子只读**自己币**的历史数据、只在自己时间轴上找规律。排除：跨币排序/
+  相对强弱等截面构造（ADR-0012 原判），**以及跨币特征输入（lead-lag 类,如用 BTC 走势
+  当 ETH 因子输入）——后者需用户显式解锁才能开**。不受影响：35 币验证宇宙（单标评估
+  的跨币复制实验,非截面构造）；截面发现 backlog 维持 deferred。
+- **V1/V2 产物命名（2026-07-03，用户拍板，已入 CONTEXT.md）**：V1 挖出的 edge 叫
+  **Timing Alpha**（择时 alpha：total-return 预测、单腿、带市场暴露、不得宣称中性）；
+  V2 的叫 **Residual Alpha**（残差/idio alpha：市场残差预测、须带对冲腿才能兑现）。
+  依据：业界(Two Sigma/Citadel)对 signal/alpha 混叫、不靠命名区分——区分靠预测标签
+  （total vs residual/idio）+ 组合层对冲 + PnL 归因（factor vs idio PnL，多经理平台
+  语境）；Grinold-Kahn 教科书 alpha 正式定义=expected residual return。"alpha" 永远是
+  相对基准的（factor zoo：昨天的 alpha 是今天的 beta），项目内禁用裸 "alpha"，必须带
+  轨道限定。连带修掉 CONTEXT.md 两处 ADR-0014 之前的陈旧（Effective Factor 写死
+  market-neutral、Forward Return 写死 market residual）。同日早前设计文档 §1 流程图/
+  §3.4 base set 表/§3.6 pass conditions 的陈旧也已修（用户发现流程图与计划不对应）。
+
+**ADR-0016 Factor Scorecard 定案（2026-07-03 晚，用户全程逼问出来的，文档已改、代码未动）**：
+
+起因：用户连续追问"统计层到底该拿什么评估单标时序因子——按业界实际,不按我们文档写了什么"。
+逐项审计（推理+WebSearch 双验证,权威锚 = AFML Ch.14 Backtest Statistics / mlfinlab 实现,
+交叉 MOP/Lempérière 复制传统 + HM/Cumby-Modest/Pesaran-Timmermann 方向检验文献）：
+
+- **13 行记分卡定案**（全部定义在 sign×vol-norm 流上,各行带血统标签 A 多血统业界/
+  B 单一血统(AFML)/C 学术/D 自造）：Sharpe、日级 t（日级聚合是 D 级自造校准,形式是 A）、
+  PSR/DSR、赌注数、每笔毛 edge(bp)、分期表+符号计数、基准相关+增量 alpha、条件方向命中
+  （HM/PT 形态）、回撤/Calmar/TuW、偏峰、HHI（正负分开）、换手/半衰期/滞后敏感性、
+  市场暴露三件套（对同币 buy-and-hold 相关 + 控市场 alpha + ratio of longs）+ 衰减曲线。
+- **审计抓出的错误与修正**：①**IC/Rank IC 是横截面词汇渗漏**,单标时序无出处（学术对应物
+  是预测回归斜率/OOS R²,Campbell-Thompson 血统,已随 bar 级 NW 冻结）——项目内禁用,
+  幸存诊断改名"时序预测相关性"[D]；②**朴素 hit rate 在漂移市场有偏**（常多因子牛市白得
+  高胜率）,正规形态=涨跌分开的条件命中+HM/PT 列联检验,且文献明示序列相关下 oversize→
+  须日级化；③**真漏项:每笔毛 edge**（费用墙算术的分子,SOL 案例手工算过的 17.7bp 就是它）;
+  ④**真漏项:市场暴露**（AFML 白纸黑字 correlation to underlying——V1 方向性因子可能退化成
+  变相常多,趋势基准 spanning 抓不住,必须显式测）。
+- **两条实现红线**：市场暴露基准=**同币** buy-and-hold（ETH 对 BTC 回归=跨币输入,V2 地盘）;
+  分桶分位数必须 trailing（全样本分位=前视,SOL 案例踩过）。
+- **方法论决定（用户拍板）**：**先实现全部指标计算,角色分配后置**——每次评估吐完整记分卡,
+  谁否决/谁排名/谁诊断维持 ADR-0015 工作假设,等 1.5 真实数据记分卡出来再最终定案。
+- **1.4 重排（用户两轮矫正后定形）**：初版塞成"1.4a 全指标+1.4b 衰减曲线"两行,被用户
+  打回（"每行指标都可能有大量问题,塞一个小任务是滥竽充数"——历史证据支持:1.2 一个标签
+  函数=一个迭代,1.3 一个基准=一个迭代）。终版 = PLAN 独立专节 **1.4.0–1.4.10**,按共享
+  机器分族,每个子任务列了已知的坑、独立 TDD/commit/验收:0 流构造器提升(补直属测试)、
+  1 日级聚合+headline Sharpe/t(最重,tz/缺口日/多币合块/X_d ACF 实证;loop.py 落地件在此)、
+  2 赌注核算族("一笔"的定义)、3 分布族+PSR、4 路径族(vol-norm 流 DD 单位=σ 的口径问题)+
+  HHI、5 条件方向命中(HM/PT)、6 市场暴露三件套、7 分期表、8 滞后敏感性、9 衰减曲线、
+  10 真实数据整卡验收(退出闸门)。**headline Sharpe 定义在日级聚合流上**(bar 级重叠采样
+  std 标度不干净;日级=业界日频 PnL Sharpe,√365)——本日补钉规格,已写进 ADR-0016 第 1/2 行。
+- **文档已改**：新 ADR-0016;ADR-0015 加 Amended-by;设计文档 §3.5 指标表整体换成记分卡
+  （§1 流程图/§3.6/§3.7/§6 连带修）;CONTEXT.md 新增 Factor Scorecard + Time-series
+  Predictive Correlation 词条、修 Decay Profile/Factor Evaluation Report/Crypto Evaluation
+  Core/Market Neutralization/Sign Consistency/Candidate Horizon 的 IC 措辞、
+  **修 Walk-forward 词条陈旧**（还写着三段式 30d validation,1.1 已砍）;PLAN 1.4 专节/1.5/
+  2.2/2.3 重写、迭代 1 标题去 IC 化、2.5 blockquote 加更新注、4.5 的 ADR 编号冲突修掉。
+- **今天口头澄清但不改设计的**：挖掘全流程六步走查（LLM 只写因子/修代码/读判决,判决全在
+  代码谓词,机制判断留 RC 人工门——LLM 可当分析员做红队/文献对拍/简报,不当法官）;Sharpe
+  的角色=尺子不是闸门（无过线阈值是决定,不是遗漏）;RC 送审排序按 Sharpe 是推论不是已定规范。
 
 ## Next steps
 

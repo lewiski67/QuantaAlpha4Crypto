@@ -48,22 +48,29 @@ _开始日期: 2026-06-30_
 > 的价值是**非平稳/持续性**检验，那是 **walk-forward（迭代 1）** 的活；多重检验去膨胀是
 > **迭代 2**。故三件事分层：全样本 IC+NW = 评估原语（0.3）→ walk-forward（1.x）→ deflation
 > （2.x）。**会犯错的做法是停在单因子全样本就当研究判决拿去交易。**
+>
+> **⚠ 2026-07-03 修正（ADR-0015）：** 上段"业界评估原语=全样本+HAC"的说法在**月频/日频、
+> T≈几百**的文献 regime 里成立，**不能平移到 n≈130 万分钟 bar**——大 N 下 NW 修正后有效样本
+> 仍达 10⁴–10⁵，任何结构性非零相关（含无经济价值的微结构伪影）都测显著，t 失去区分力（只有
+> "不显著=可信死刑"这个方向还有信息）。评估核心已改为**交易评估传统**：Factor Return Stream
+> 的毛 Sharpe + 跨币×跨窗口符号一致性 + 多重检验修正；显著性只在**日级聚合流**上算、只当
+> 杀手锏（|t|>3，最终须 OOS）。bar 级 NW 代码冻结不删。详见 ADR-0015。
 
-### 迭代 1 — 让 IC 判决可信（~3 天）
+### 迭代 1 — 让统计判决可信（~3 天）
 
-- **消除：** 这个 IC 是真信号，还是 look-ahead / 自相关 / 市场 beta 的假象？
-- **退出问题：** "样本外 IC 在去除前视、自相关膨胀、市场暴露后还站得住吗？"
+- **消除：** 这个信号是真的，还是 look-ahead / 自相关 / 市场 beta 的假象？
+- **退出问题：** "样本外记分卡在去除前视、自相关膨胀、市场暴露后还站得住吗？"
 
 | # | 任务 | 文件 | 说明 |
 |---|------|------|------|
 | 1.1 | walk-forward + purge/embargo（TDD） | `evaluation/walk_forward.py` | **先测**：purge 后训练/测试无重叠；`_make_windows(purge_bars=horizon, embargo_bars=0)` |
 | 1.2 | vol-norm 标签（TDD）【V1 重定义，ADR-0014】 | `evaluation/metrics.py` | `_vol_norm_returns`。**`_market_residual`（OLS）推迟到 V2**——V1 标签 = vol-norm 后的 raw forward return（方向性），见 ADR-0014 |
 | 1.3 | ✅ Base Factor Model 完成（2026-07-02，121 tests）【V1 重定义，ADR-0014】 | `evaluation/base_model.py` | 最终形态与原计划不同：**动量/反转合并成一个 trailing-return 家族**（不预判方向，回归系数决定），两个固定窗口——短=2min、长=4h（split-sample 实测，非网格最大值，三币 BTC/ETH/SOL 合约验证）。**资金费率、波动率基准均测过后放弃**（无信号/无方向定义，详见 HANDOFF）。`incremental_significance(candidate_score, label, data, lag)`：候选与基准同构 `sign(score)×label` 因子收益流，FWL 提取截距做 NW 检验，含大样本浮点噪声护栏。`residualize(...)` 残差化标签变换仍推迟到 V2 |
-| 1.4 | IC 衰减曲线（计算层） | `evaluation/metrics.py` | `_decay_profile(scores, returns, horizons)`，horizon 是读出来的不是搜出来的。**`horizons` 网格取值未定**——业界无统一标准，须按 crypto 机制尺度自定（秒级→日级，够宽够密罩住经济上合理的整条带），这是必须自己拍的设计项 |
-| 1.5 | 多 horizon 评估编排 + 标签/walk-forward 统一接线 | `evaluation/factor.py` | `evaluate_directional_factor` 从单 horizon 升级为吃 `horizons` 网格、返回整条 profile 进 `FactorEvaluation`。**评估对象是整条曲线，不塌缩成单点**。**同一次手术完成三件事**（决策于 1.2,避免混血过渡态）：①标签从裸 forward return 换成 **vol-norm 版**（除以 1.2 的 `_vol_norm_returns` 分母,V1/ADR-0014）；②接入 1.1 的 walk-forward 切窗（pooled OOS NW + ICIR 口径见 HANDOFF）；③审计改为每因子跑一次、不随 horizon 数翻倍 |
+| 1.4 | **Factor Scorecard 计算层**【ADR-0016】——细分为 1.4.0–1.4.10,**见下方专节**（13 行指标不是一个小任务,每行有自己的设计坑） | `evaluation/metrics.py`、`mining/loop.py` | 见专节 |
+| 1.5 | 多 horizon 评估编排 + 标签/walk-forward 统一接线【ADR-0015/0016 重定标】 | `evaluation/factor.py` | `evaluate_directional_factor` 从单 horizon 升级为吃 `horizons` 网格、**每因子吐一张完整 Factor Scorecard**（全部行,带血统标签）进 `FactorEvaluation`。**评估对象是整条曲线，不塌缩成单点**。**同一次手术完成三件事**（决策于 1.2,避免混血过渡态）：①标签从裸 forward return 换成 **vol-norm 版**（除以 1.2 的 `_vol_norm_returns` 分母,V1/ADR-0014）；②接入 1.1 的 walk-forward 切窗——记分卡统计量算在 **OOS 流**上（日级聚合杀手锏 t 按 ADR-0015 工作假设）,分窗口 stream Sharpe/符号一致性管稳定性；③审计改为每因子跑一次、不随 horizon 数翻倍 |
 
-**验收：** 同一因子在完整 walk-forward + vol-norm 标签 + NW 修正下重跑，IC 判决是诚实的。
-此处可能直接证伪迭代 0 看到的"信号"——那也是有价值的结果。
+**验收：** 同一因子在完整 walk-forward + vol-norm 标签下重跑，吐出全 13 行记分卡
+（ADR-0016），统计判决是诚实的。此处可能直接证伪迭代 0 看到的"信号"——那也是有价值的结果。
 
 > **V1/V2 分轨（ADR-0014，2026-07-02）：** V1 = **方向性**（vol-norm raw return 标签，
 > 单腿事件化交易，horizon 锁定 **~1min–4h**（2026-07-02 从 15min–4h 下扩，实测 5min
@@ -81,6 +88,42 @@ _开始日期: 2026-06-30_
 > 可能不存在的问题写代码；先让 NW 在真实样本量上跑，由数据决定是否需要。设计
 > 文档 §3.5 的 "Newey-West / block bootstrap" 并列即此意。
 
+### 迭代 1.4 — Factor Scorecard 计算层（细分,~4–6 天）
+
+- **消除：** 记分卡 13 行的每一行,数值语义都可能有坑（单位、边界、口径）——逐行钉死。
+- **退出问题：** "对 1.3 的基准因子,能在真实合约数据上吐出一张全行有值、数字符合已知
+  规律的记分卡吗？"
+- **纪律：** 每个子任务独立 TDD、独立 commit、有自己的验收；1.4.2–1.4.8 相互独立可乱序。
+  历史证据（1.2 一个标签函数=7 个设计决策;1.3 一个基准模型=2 个真 bug）表明"一行指标
+  ≈ 半天到一天",不要再假装它们是一个下午的活。
+
+| # | 任务 | 说明 / 已知的坑 |
+|---|------|----------------|
+| 1.4.0 | 流构造器提升为公共原语 | `_factor_return_stream` 从 `base_model.py` 迁至 `metrics.py`,`base_model` 改 import。**先补直属测试**锁现有语义：inner-join 对齐、dropna、`sign(0)=0`（零分=平仓）。行为零变化,1.3 全部测试原样绿 |
+| 1.4.1 | 日级聚合原语 + headline Sharpe + 杀手锏 t | **全批最重的统计件**。逐 bar 流按 UTC 日求和→日级序列;**headline Sharpe 与 t 都定义在日级流上**（bar 级重叠采样的 std 标度不干净,日级化后 = 业界日频 PnL Sharpe,√365 年化——2026-07-03 补钉的规格）。坑：tz-aware 日边界、缺口日/不完整日（首尾日、停摆日）、**多币同日必须合进同一块**（corr 0.82,symbol-day 分块虚报 n,ADR-0015 §5）、年化用 365 还是观测日数。附带:**画 X_d 的 ACF 实证**（决定普通 t 够不够,还是要日级 NW——ADR-0015 预留的检查）;`mining/loop.py` 阈值 2.0→3.0 + `"signal"`→`"passes-noise-screen"` 接线在此 |
+| 1.4.2 | 赌注核算族：赌注数 / 每笔毛 edge / 换手 / 平均持仓 / 半衰期 | 共享同一个仓位序列解析器。坑：**"一笔"在连续 sign 流里的定义**（翻转到翻转;`sign(0)` 平仓段算不算终结一笔）;事件型（大量零仓）与连续型两种形态要同一口径覆盖;半衰期用 score 自相关还是仓位自相关（拟定:score,和换手分开报） |
+| 1.4.3 | 分布族：偏度/峰度 + PSR | 在**日级流**上算矩（bar 级矩被重叠采样污染）。坑：PSR 的基准 SR* 取 0 还是可配;偏度/峰度的小样本噪声（~900 日）报告时要带 n |
+| 1.4.4 | 路径族：MaxDD / Calmar / TuW + HHI 集中度 | **已知设计问题**：vol-norm 流的累计曲线单位是 σ 不是 %,MaxDD 读作"σ 单位回撤",Calmar 分子分母必须同单位（口径写进 docstring,不许混报）;复用 `_max_drawdown` 前先审它的语义。HHI 正负流分开算;按日还是按笔聚合要定（拟定:按日,与其他行一致） |
+| 1.4.5 | 条件方向命中（HM/PT 形态） | 日级化（文献明示 bar 级序列相关下 oversize）。坑："涨/跌日"用日级标签和的符号定义;零仓位日剔除;PT 检验在类别不平衡（牛市样本涨日多）下的期望频数——这正是它存在的意义,测试要覆盖"常多因子在牛市样本下条件命中不虚高" |
+| 1.4.6 | 市场暴露三件套 | 同币 buy-and-hold 流（**红线:不许 BTC 当指数**）、控市场 alpha t（复用 1.3 的 FWL 机器,基准换成 B&H 流）、ratio of longs（零仓位怎么计入分母要定）。坑：B&H 流必须同 label 口径（vol-norm,同 horizon）否则回归两边尺度不齐 |
+| 1.4.7 | 分期一致性表 + 符号计数 | 日历分期（月/季/年）的分期 Sharpe 表 + 正号比例;分组接口留 regime 维度（牛熊/高低波,ADR-0016）。跨 walk-forward 窗口版本**等 1.5**（现在还没有窗口流） |
+| 1.4.8 | 滞后敏感性 | entry lag 2/3/4 bar 重算 headline Sharpe（复用 `_forward_returns` 的 `execution_lag_bars`）。便宜,但要防和 t+1 默认叠加造成 off-by-one——测试锁"lag=1 就是现状" |
+| 1.4.9 | 衰减曲线 `_decay_profile` | 记分卡第 1 行沿 `V1_HORIZON_GRID`（9 点,1min–4h）扫;y 轴 = 日级流 Sharpe;诊断列 = 时序预测相关性（不叫 IC）。1.4.1 落地后近乎白送 |
+| 1.4.10 | 端到端真实数据验收 | 1.3 的两个基准 score 在 BTC/ETH/SOL 合约上各吐一张**完整记分卡**,人工核对已知规律（短端反转 5/15min 峰、ETH 长端 1h 动量、市场暴露行能抓出"常多"哨兵因子）。这是 1.4 的退出闸门 |
+
+**验收：** 13 行全部有直属测试;`pytest` 全绿;1.4.10 的三张真实记分卡数字经人工核对;
+DSR 行留空待 2.1（记分卡结构预留字段）。
+
+> **Factor Scorecard（ADR-0016，2026-07-03，贯穿 1.4 → 2.2）：** 统计层评估
+> = 每因子计算**全部 13 行记分卡**（各行带血统标签 A/B/C/D，业界锚点见 ADR-0016 表），
+> **先算全集、角色分配后置**——谁否决/谁排名/谁诊断维持 ADR-0015 工作假设,待 1.5 在
+> 真实数据上跑出记分卡后再最终定案（2.2）。词汇纪律：单标时序评估**禁用 IC/Rank IC**
+> （横截面血统渗漏,ADR-0016）,幅度诊断 = 时序预测相关性 [D] + 分桶单调性(2.5)。
+> 实现红线：市场暴露基准=同币 buy-and-hold（跨币=V2 地盘）;分桶分位数用 trailing
+> （全样本分位=前视,SOL 案例实际踩过）;方向命中检验日级化（序列相关下 oversize）。
+> 留档缓行：参数扰动平原检查（程序级,RC 报告设计时再议）;OOS R²（学术血统,随 bar 级
+> NW 冻结）。
+>
 > **多 horizon 评估的纪律（贯穿 1.4/1.5 → 2.x）：** 评估**不是** max-over-horizon，
 > 也不是固定单 horizon。horizon 是**因子假设的一部分**，由经济机制事前声明；在网格上
 > 看整条衰减曲线，用**「连续宽带 vs 孤立尖峰」**区分真信号与噪声——超短端（1–5min）
@@ -96,12 +139,12 @@ _开始日期: 2026-06-30_
 | # | 任务 | 文件 | 说明 |
 |---|------|------|------|
 | 2.1 | Trial Registry | `evaluation/registry.py` | `register/count/load`，JSON Lines，记录**所有**候选含被拒。**记录事前 metadata：经济机制文本 + 声明 horizon**（审计 + deflation 计数用）。**衰减曲线扫的每个 horizon 计入 trials**——扫网格本身要付多重检验代价 |
-| 2.2 | Research Gate = 纯统计谓词 | `evaluation/gates.py` | 移除 Sharpe；接 NW t-stat + deflated p（`p*count`）+ ICIR 阈值。**加衰减带谓词**（连续宽带 + 显著性，对应 1.4/1.5 的读出准则）+ **声明 horizon vs 实测带一致性检查**（声明"8h 回归"却只在 5min 工作→机制不符，标记） |
-| 2.3 | 库存 Factor Return Stream + 增量 IC | `evaluation/library.py` | `add_factor(id, stream, meta)`→parquet；`incremental_ic(...)`；`is_orthogonal(0.05)`。**`meta` 存机制文本 + 声明 horizon**（审计） |
+| 2.2 | Research Gate = 纯统计谓词【ADR-0015/0016 重定标】 | `evaluation/gates.py` | 移除旧策略 Sharpe 条款；谓词集（**ADR-0015 工作假设,在 1.5 真实记分卡数据上最终定案**）= **日级 OOS 杀手锏 t>3（仅否决权）+ 跨币×跨窗口符号一致性 + incremental significance（对 base model+库）+ deflated 显著性（DSR 形态）+ 分桶单调性(2.5)**——IC 类谓词移除（幅度诊断=时序预测相关性,ADR-0016）。**加衰减带谓词**（连续宽带 + 显著性，对应 1.4/1.5 的读出准则）+ **声明 horizon vs 实测带一致性检查**（声明"8h 回归"却只在 5min 工作→机制不符，标记）。记分卡其余行（回撤/HHI/市场暴露等）为诊断,不进谓词——除非真实数据揭示必要 |
+| 2.3 | 库存 Factor Return Stream + 增量显著性 | `evaluation/library.py` | `add_factor(id, stream, meta)`→parquet；对库的 `incremental_significance(...)`（复用 1.3 构造）；`is_orthogonal(0.05)`。**`meta` 存机制文本 + 声明 horizon + 完整记分卡**（审计,ADR-0016） |
 | 2.4 | grid.py 标 DEPRECATED | `evaluation/grid.py` | 顶部 banner，保留文件免 import 崩 |
 | 2.5 | 信号分桶条件收益单调性（非 IC 支柱，TDD） | `evaluation/metrics.py`、`evaluation/gates.py` | 计算层 `_conditional_return_profile(scores, returns, n_buckets)`：按信号分位分桶，出每桶平均收益（**V1 吃 vol-norm raw return,V2 换残差收益**,ADR-0014）。这是 V1 事件化交易形态的核心证据（验证"越极端越准"的结构；阈值本身留给部署层,因子层零自由参数）；Gate 谓词：桶均值单调性（Spearman on bucket means）+ 顶底桶差 NW 显著。**先测**：合成单调关系→通过；U 型/非单调（IC 显著但形状坏）→拦截 |
 
-**验收：** 完整 Research Gate 路径 NW-tstat deflation → orthogonality → **单调性** → accept/reject，
+**验收：** 完整 Research Gate 路径 日级杀手锏 t + deflation → orthogonality → **单调性** → accept/reject，
 全有测试。grid/threshold 搜索不再被调用。
 
 > **经济先验的归处（不要建模块）：** 经济先验**大部分不能代码化**，硬塞统计函数是假严谨。
@@ -112,6 +155,10 @@ _开始日期: 2026-06-30_
 > **边界**：机制文本起源于 `mining/`，但 `evaluation/` 只把它当传入的 metadata + 做一致性
 > 检查，**绝不在 `evaluation/` 里调 LLM 做经济分析**（守 `CLAUDE.md` 的 evaluation 不调 LLM 铁律）。
 
+> **⚠ 2026-07-03 更新（ADR-0016）：** 本段写于 IC 口径时代,取舍结论仍立（单调性是唯一
+> 进 gate 的幅度谓词）,但词汇按 ADR-0016 读：「IC」→时序预测相关性/记分卡;hit rate 已以
+> **条件方向形态**（HM/PT,记分卡第 8 行）纳入**计算**,角色仍是诊断、不进 gate。
+>
 > **为什么只加分桶单调性这一根非 IC 支柱（2.5 的取舍）：** 业界统计筛选不止 IC——还看分位数
 > 多空收益、换手/成本、因子 Sharpe。但换手/成本/Sharpe 按"零交易参数"不变量归 Trading Gate；
 > 分位数**截面**多空因 N=2–3 退化不可用。**唯一同时满足「与 IC 正交 + 小 N 时间序列可用 + 纯
@@ -157,7 +204,7 @@ _开始日期: 2026-06-30_
 | 4.2 | NautilusTrader 接入 | `quantaalpha_crypto/backtest/` | `FactorStrategy(Strategy)` signal→order，同对象 backtest+live；`costs.py` fees/slippage/funding；`runner.py` |
 | 4.3 | Trading Gate 谓词 | `evaluation/gates.py` | 输入回测输出，查 portfolio net Sharpe / max DD；与 Research Gate 分离 |
 | 4.4 | 端到端集成测试 | `tests/test_backtest_integration.py` | Research accept→backtest→Trading accept/reject 全路径 |
-| 4.5 | ADR-0014 | `docs/adr/` | NautilusTrader committed single engine |
+| 4.5 | 新 ADR（编号届时顺延；0014 已被 V1/V2 分轨占用） | `docs/adr/` | NautilusTrader committed single engine |
 
 **验收：** 一个过 Research Gate 的因子，端到端跑到带成本的 portfolio Sharpe 判决。
 

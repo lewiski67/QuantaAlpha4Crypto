@@ -19,11 +19,13 @@ about a signal, never a strategy.
 ## Language
 
 **Effective Factor**:
-A factor with demonstrated **incremental, market-neutral, statistically robust**
-predictive power — i.e. one that passes the Research Gate. Tradability is a
-portfolio property decided later at the Trading Gate, not a property of a single
-factor. An Effective Factor is not by itself a tradable strategy.
-_Avoid_: Good factor, valid factor, alpha, tradable factor
+A factor with demonstrated **incremental, statistically robust** predictive
+power — i.e. one that passes the Research Gate — on its own track's label
+(Timing Alpha for `directional_v1`, Residual Alpha for `market_neutral_v2`;
+ADR-0014). Tradability is a portfolio property decided later at the Trading
+Gate, not a property of a single factor. An Effective Factor is not by itself
+a tradable strategy.
+_Avoid_: Good factor, valid factor, alpha (unqualified), tradable factor
 
 **Crypto Data Universe**:
 All crypto market, trade-derived, and external macro data available to the project for factor construction and validation.
@@ -33,8 +35,9 @@ _Avoid_: Dataset, raw files
 The future price return over a defined prediction horizon used as a factor's
 evaluation target. It is measured with **t+1 execution alignment** (a score from
 the bar-`t` close is matched to a return that starts at the next executable
-point), is **volatility-normalized**, and for alts is taken as the **market
-residual** (see Market Neutralization).
+point) and is **volatility-normalized**. V1 uses the vol-normalized **raw**
+return (directional track); the **market-residual** form (see Market
+Neutralization) is the V2 label (ADR-0014).
 _Avoid_: Future profit, next return
 
 **Tradable Signal**:
@@ -44,8 +47,8 @@ _Avoid_: Prediction, score, factor
 
 **Candidate Horizon** _(retired)_:
 Formerly a fixed menu (1m/15m/30m/1h/4h/1d) the evaluator searched over. Retired:
-horizon is now **read from the Decay Profile** (IC vs horizon), not selected from
-a menu. Use Decay Profile / Holding Horizon instead.
+horizon is now **read from the Decay Profile** (stream Sharpe vs horizon), not
+selected from a menu. Use Decay Profile / Holding Horizon instead.
 _Avoid_: Trading frequency, rebalance interval
 
 **Input Lookback Window**:
@@ -105,7 +108,7 @@ The active package `quantaalpha_crypto/`. It contains `quantaalpha_crypto/evalua
 _Avoid_: Qlib compatibility layer, full rewrite, `quantaalpha/crypto/`
 
 **Crypto Evaluation Core**:
-The module under `quantaalpha_crypto/evaluation/` responsible for Crypto Panel construction, Factor Callable evaluation, the Statistical Evaluation Engine (time-series IC/IR, Decay Profile, Incremental IC, Deflated Significance), Walk-forward Validation, Research Gate and Trading Gate classification, Factor Evaluation Reports, and Candidate Factor Library persistence. It does not generate factors or call LLMs.
+The module under `quantaalpha_crypto/evaluation/` responsible for Crypto Panel construction, Factor Callable evaluation, the Statistical Evaluation Engine (the Factor Scorecard — ADR-0015/0016), Walk-forward Validation, Research Gate and Trading Gate classification, Factor Evaluation Reports, and Candidate Factor Library persistence. It does not generate factors or call LLMs.
 _Avoid_: Mining pipeline, automation loop, live strategy engine
 
 **Crypto Mining Automation**:
@@ -119,7 +122,7 @@ _Avoid_: Separate crypto-only workflow, Qlib-compatible crypto mode
 **Cost-aware Mining Feedback** _(renamed: Mining Feedback)_:
 The loop feedback passed from evaluation results into the next factor proposal or
 repair round. It carries **gross signal, Decay Profile, and orthogonality /
-Incremental IC** — it distinguishes (a) no gross signal, (b) gross signal but
+Incremental Significance** — it distinguishes (a) no gross signal, (b) gross signal but
 collinear with the library, (c) gross signal that is incremental. It does **not**
 carry net return, cost drag, turnover, or break-even fee; cost is a deployment
 concern and must not re-enter the discovery loop.
@@ -132,6 +135,25 @@ _Avoid_: Prediction threshold, timing rule
 **Directional Factor**:
 A factor whose output is a continuous score representing market direction or strength, evaluated **per symbol as a time series**. The factor does not choose the trading action, threshold, holding horizon, sizing, or leverage.
 _Avoid_: Strategy factor, complete trading rule
+
+**Timing Alpha**:
+The edge of a V1-track (`label_mode=directional_v1`) factor: incremental
+predictive power over the **total (vol-normalized raw) return** — a market-timing
+skill in the Merton sense. Its return stream carries market exposure by design
+(single-leg trading; risk layer counts co-moving symbols as ~1 bet, ADR-0014
+guardrail 3). Never present Timing Alpha as market-neutral. "Alpha" is always
+benchmark-relative: a Timing Alpha claim means incremental vs the Base Factor
+Model, nothing stronger.
+_Avoid_: alpha (unqualified), market-neutral alpha, idio alpha
+
+**Residual Alpha**:
+The edge of a V2-track (`label_mode=market_neutral_v2`) factor: incremental
+predictive power over the **market-residual** return (industry: idiosyncratic /
+"idio" alpha). Realizing it requires the hedge leg (coin vs β·BTC/proxy) —
+without the hedge the forecasted return stream cannot be captured. Still
+benchmark-relative: residual to the market proxy plus the Base Factor Model,
+not an absolute "true alpha".
+_Avoid_: alpha (unqualified), pure alpha, true alpha
 
 **Factor Callable**:
 The formal interface for a directional factor: a Python callable that reads feature data from a crypto panel and returns a continuous score series indexed by timestamp and symbol.
@@ -146,32 +168,65 @@ _Avoid_: Hyperparameter search, strategy optimization
 
 **Base Factor Model**:
 The small, versioned set of already-known return drivers every new factor must
-beat — v1: a market proxy (BTC or a broad index, **not** within-universe equal
-weight), time-series momentum, volatility, funding/carry. It is the
-residualization target for Market Neutralization and Incremental IC.
+beat. V1 (ADR-0014, iteration 1.3): a **trailing-return family** at two fixed
+windows (2min short, 4h long), signs discovered per candidate/symbol by
+spanning regression, not pre-committed; volatility and funding benchmarks were
+tested on real futures data and dropped. It is the spanning benchmark for
+Incremental Significance; the market proxy (BTC/index, **not** within-universe
+equal weight) enters as V2's residualization target.
 _Avoid_: Risk model, Barra, factor zoo
+
+**Factor Scorecard**:
+The full, versioned set of statistics every factor evaluation computes and
+reports (ADR-0016): 13 lineage-labeled rows on the Factor Return Stream —
+gross stream Sharpe; daily-aggregated stream t; PSR/DSR; bet count; gross
+edge per bet (bp); sub-period Sharpe table + Sign Consistency counts;
+baseline correlations + Incremental Significance; conditional directional
+accuracy (up/down-conditioned, HM/PT form); drawdown/Calmar/time under
+water; skew/kurtosis; HHI return concentration; turnover/holding
+period/lag sensitivity; market-exposure trio (corr to own-symbol
+buy-and-hold, alpha after market control, ratio of longs) — plus the Decay
+Profile. Compute-first discipline: all rows are always produced;
+programmatic roles (veto/rank/diagnostic) are assigned separately
+(ADR-0015 working hypothesis). Lineage labels (industry / single-lineage /
+academic / self-constructed) must be preserved in docs and reports.
+_Avoid_: IC report, metric soup, cherry-picked metrics
+
+**Time-series Predictive Correlation**:
+The per-symbol correlation (Pearson/Spearman) between scores and labels
+along the time axis. A **self-constructed diagnostic** for magnitude
+ordering — cross-sectional "IC / Rank IC" vocabulary is banned for
+single-asset time-series evaluation because it asserts a false industry
+pedigree (ADR-0016); the practitioner magnitude diagnostic is bucket
+monotonicity (PLAN 2.5).
+_Avoid_: IC, Rank IC, ICIR
 
 **Factor Return Stream**:
 The parameter-free per-symbol return series derived from a factor's scores —
-`sign(score) × forward_return` (or score-weighted forward return) — used to
-compute residual IC and to check orthogonality against the library. The only
-"construction" permitted in discovery; carries no free parameters.
+`sign(score) × forward_return` (or score-weighted forward return). **The core
+evaluation object (ADR-0015)**: factor strength is its gross stream Sharpe,
+robustness is its cross-symbol × cross-window sign consistency, significance
+(kill switch only) is the daily-aggregated stream's t, and orthogonality /
+incremental significance are computed on it. The only "construction" permitted
+in discovery; carries no free parameters.
 _Avoid_: Strategy return, backtest PnL
 
 **Market Neutralization**:
-Removing the common crypto market factor from a target before measuring IC, so a
-factor is not rewarded for being secretly long market beta. For alts, residualize
+Removing the common crypto market factor from a target before measuring
+predictive power, so a factor is not rewarded for being secretly long market
+beta. For alts, residualize
 against an external proxy (BTC/index); for BTC itself there is no market to
 neutralize against, so a BTC signal is inherently a directional market-timing bet
 and judged as such. With only 2–3 symbols, never neutralize against the
 within-universe equal weight (it degenerates to spread trading).
 _Avoid_: Demeaning, beta hedge
 
-**Incremental IC**:
-A factor's predictive power **after** residualizing its Factor Return Stream
-against the Base Factor Model and the existing library. A factor's value is its
-incremental contribution, not its standalone IC.
-_Avoid_: Raw IC, standalone IC
+**Incremental Significance** _(renamed from Incremental IC, ADR-0015)_:
+A factor's remaining edge **after** residualizing its Factor Return Stream
+against the Base Factor Model and the existing library (FWL spanning-regression
+intercept). A factor's value is its incremental contribution, not its
+standalone strength.
+_Avoid_: Raw IC, standalone IC, incremental IC
 
 **Deflated Significance**:
 Statistical significance discounted by the number of candidates evaluated
@@ -186,9 +241,11 @@ Significance. The human-readable research log does not serve this purpose.
 _Avoid_: Research log, leaderboard
 
 **Decay Profile**:
-IC measured as a function of horizon. It replaces searching a horizon menu: the
-natural Holding Horizon is read from where IC peaks/persists, and regime
-sensitivity is read from per-window IC dispersion (a diagnostic, not a filter).
+Factor Return Stream Sharpe measured as a function of horizon (time-series
+predictive correlation retained as a diagnostic column — ADR-0015/0016). It
+replaces searching a horizon menu: the natural Holding Horizon is read from
+where the stream Sharpe peaks/persists, and regime sensitivity is read from
+per-window dispersion (a diagnostic, not a filter).
 _Avoid_: Horizon grid, candidate horizon
 
 **Holding Horizon**:
@@ -206,10 +263,12 @@ _Avoid_: Final score, backtest result
 **Research Gate**:
 The discovery-stage gate (a pure predicate over statistical evidence) for mining
 feedback and Candidate Factor Library intake. It requires: no leakage (input
-audit + t+1 + purged/embargoed walk-forward), sufficient coverage, IC sign
-stability, IC IR and **deflated** significance, and non-trivial **Incremental
-IC**. It uses **no** thresholds, turnover, cost, or break-even diagnostics — those
-are deployment-layer.
+audit + t+1 + purged/embargoed walk-forward), sufficient coverage, the
+daily-block OOS kill-switch t (|t|>3, veto-only — passing is an entry ticket,
+never an endorsement), Sign Consistency across symbols/windows, **deflated**
+significance, and non-trivial **Incremental Significance** vs the Base Factor
+Model and library (ADR-0015). It uses **no** thresholds, turnover, cost, or
+break-even diagnostics — those are deployment-layer.
 _Avoid_: Production gate, tradability approval
 
 **Trading Gate**:
@@ -238,16 +297,15 @@ Legacy term for the earlier single first-stage acceptance gate. Use Research Gat
 _Avoid_: Research Gate, Trading Gate
 
 **Strong Factor Gate** _(legacy)_:
-Legacy term for the earlier stricter first-stage label. Express strength through Research Gate diagnostics (IC IR, deflated significance, incremental IC) instead.
+Legacy term for the earlier stricter first-stage label. Express strength through Research Gate diagnostics (stream Sharpe, sign consistency, deflated significance, incremental significance) instead.
 _Avoid_: Production-ready factor, guaranteed alpha
 
 **Factor Evaluation Report**:
-An auditable report for a directional factor: data dependencies, time-series
-IC / IC IR per symbol (on market-residual, vol-normalized returns), Decay
-Profile, Incremental IC vs base model + library, per-window IC dispersion,
-autocorrelation-corrected and **deflated** significance, walk-forward (purged/
-embargoed) window metrics, and the Research Gate result. Cost/turnover/net-return
-fields belong only to the deployment-side Trading Gate report.
+An auditable report for a directional factor: data dependencies, the full
+Factor Scorecard (all rows, with lineage labels — ADR-0016), walk-forward
+(purged) window metrics, and the Research Gate result. Cost/turnover/
+net-return fields belong only to the deployment-side Trading Gate report
+(gross edge per bet is pre-cost and stays in the scorecard).
 _Avoid_: Backtest summary, leaderboard row
 
 **Candidate Factor Library**:
@@ -257,19 +315,24 @@ so intake can enforce orthogonality. Inclusion means the factor is a research
 candidate and does not imply Trading Gate approval or permission to trade.
 _Avoid_: Production strategy library, alpha book
 
-**IC Stability**:
-The requirement that time-series IC (on market-residual, vol-normalized returns)
-is consistently signed across **purged/embargoed** walk-forward test windows,
-with **autocorrelation-corrected** significance. Stability + Incremental IC +
-Deflated Significance matter more than raw IC magnitude.
-_Avoid_: High IC, significant IC
+**Sign Consistency** _(renamed from IC Stability, ADR-0015)_:
+The requirement that the Factor Return Stream's mean is consistently signed
+across **purged/embargoed** walk-forward test windows and across symbols
+(validation universe may exceed the trading universe; co-moving symbols count
+as ~1 bet). This replication evidence + Incremental Significance + Deflated
+Significance matter more than any single pooled statistic. IC-based stability
+wording is retired (see Time-series Predictive Correlation).
+_Avoid_: High IC, significant IC, IC stability
 
 **Walk-forward Validation**:
-An out-of-sample method that repeatedly trains/validates/tests on time-ordered
-rolling windows, with **Purge/Embargo** around each train/test boundary to stop
-overlapping-label leakage. First-stage default: 180d train, 30d validation, 30d
-test, 30d step — noting that, with co-moving symbols, windows are not independent
-and "survived N windows" is weaker evidence than in a broad cross-section.
+An out-of-sample method that repeatedly trains/tests on time-ordered rolling
+windows, with **Purge** at each train/test boundary to stop overlapping-label
+leakage. Implemented (iteration 1.1) as **two segments** — 180d train, 30d
+test, step defaulting to the test window (seamless OOS tiling); the
+validation segment was cut (zero-free-parameter factors have nothing to
+tune) and embargo is a no-op in forward-only splits (deferred to CPCV).
+Note: with co-moving symbols, windows are not independent and "survived N
+windows" is weaker evidence than in a broad cross-section.
 _Avoid_: Single train/valid/test split, random split
 
 **Purge/Embargo**:

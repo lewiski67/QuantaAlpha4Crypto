@@ -59,19 +59,22 @@ orthogonality (§3.7).
    Factor Callable -> score        │  (score only; no-lookahead audit)
       │                           │
       ▼                           │
-  Base Factor Model ──────────────┤  market proxy (BTC/index) + TSMOM
-   (residualization target)       │  + vol + funding
-      │                           │
+  Base Factor Model ──────────────┤  V1: trailing-return family, fixed
+   (spanning benchmark; V2 adds   │  2min + 4h windows (ADR-0014, 1.3;
+    market-proxy residualization) │  vol & funding benchmarks tested,
+      │                           │  dropped); market proxy = V2 label
       ▼                           │
   Statistical Evaluation Engine   │  owns the forward-return target:
-   - forward-return target         │    t+1 execution, vol-normalized,
-     (t+1, vol-norm, residual)     │    market-residual
-   - time-series IC / IR          │
-   - autocorr-corrected t-stat    │
-   - decay profile                │
+   - forward-return target         │    t+1 execution, vol-normalized
+     (t+1, vol-norm; residual=V2)  │    (market-residual = V2, ADR-0014)
+   - factor return stream Sharpe  │  ← core (ADR-0015)
+   - sign consistency             │    (symbols × windows; validation
+   - daily-block kill-switch t    │     universe may exceed trading set)
+   - decay profile (stream Sharpe)│
    - orthogonality vs library     │
    - deflation (uses Trial Reg.)  │
    - walk-forward w/ purge+embargo│
+   - full scorecard (ADR-0016)    │
       │                           │
       ▼                           │
   Research Gate (predicate)       │  pass/fail over the evidence above
@@ -204,7 +207,7 @@ shares with known drivers; it is worth only its **residual** (incremental)
 predictive power. You cannot define "incremental" without a base set. This is
 the crypto, time-series analogue of a Barra model — small and self-built.
 
-**Recommended v1 base set (adjustable):**
+**Recommended v1 base set (original recommendation, superseded — see note):**
 
 | Base factor | Definition | Why it must be controlled for |
 | --- | --- | --- |
@@ -212,6 +215,19 @@ the crypto, time-series analogue of a Barra model — small and self-built.
 | Time-series momentum | trailing return over a medium window (e.g. 24h–7d) | TSMOM is the default crypto edge; new factors must beat it |
 | Volatility | trailing realized vol | prevents factors that are just vol-timing |
 | Funding / carry | funding-rate level | perp-specific carry is a known driver |
+
+> **As built (2026-07-02, iteration 1.3 + ADR-0014; evidence in HANDOFF).**
+> Real BTC/ETH/SOL futures testing reshaped this table: the V1 base set is a
+> single **trailing-return family at two fixed windows (2min, 4h)** — the
+> momentum/reversal sign is symbol-dependent, so it is discovered by the
+> spanning-regression coefficients, not pre-committed. **Volatility** was
+> dropped (no directional definition at N=2–3; leverage-effect variant
+> unverified on crypto; VRP needs options data the pipeline lacks) and the
+> vol-norm label already removes vol-scale bets. **Funding** was dropped
+> (level, sign, z-score, and extreme-quantile constructs all tested; best
+> NW≈1.83, below bar; revival needs cross-sectional construction or richer
+> positioning data). The **market proxy** is not a V1 spanning benchmark; it
+> enters as V2's residualization target (ADR-0014 defers residualization).
 
 **Market-neutralization at small N (critical).** With only 2–3 symbols, using
 the within-universe equal-weight as "the market" is degenerate: regressing
@@ -225,10 +241,10 @@ the test into **BTC–SOL spread trading**. To avoid that:
   market-neutral.
 
 **Factor return stream (definition for orthogonality).** Orthogonality and
-incremental IC are computed on factor *return streams*, not raw scores. Define a
+incremental significance are computed on factor *return streams*, not raw scores. Define a
 parameter-free stream per symbol — `sign(score) × forward_return` (or
-score-weighted `forward_return`) — and use it both for the residual-IC evidence
-and for the library correlation check (§3.7). This definition must be fixed and
+score-weighted `forward_return`) — and use it both for the incremental-
+significance evidence and for the library correlation check (§3.7). This definition must be fixed and
 versioned; it is the only "construction" allowed in discovery and it carries no
 free parameters.
 
@@ -247,20 +263,54 @@ into a small set of **statistical statements**: does it predict, how strongly,
 how stably, for how long, and incrementally over the library.
 
 **Design philosophy.** Pure statistics. No grid search, no threshold, no
-simulated strategy, no Sharpe-of-a-constructed-strategy. This component **owns
-the forward-return target** end to end — t+1 execution alignment,
-volatility-normalization, and market-residualization (via §3.4) — so the target
-is defined in exactly one place. The metrics are:
+simulated strategy. This component **owns the forward-return target** end to
+end — t+1 execution alignment, volatility-normalization, and
+market-residualization (via §3.4) — so the target is defined in exactly one
+place.
 
-| Metric | Replaces | Notes |
+> **Amended 2026-07-03 (ADR-0015).** The metric set re-centers on the
+> **Factor Return Stream** (the trading-evaluation tradition: STW 1999,
+> Lempérière et al. 2014, MOP 2012, practitioner PSR/DSR). The gross stream
+> Sharpe here is *not* the retired "Sharpe-of-a-constructed-strategy": the
+> sign(score) stream carries zero free parameters (§3.7) — no threshold,
+> sizing, or costs — so it remains a pure statistic. The previous IC-centric
+> table treated bar-level NW significance as the headline; at minute-bar
+> sample sizes that test's power saturates and it retains only kill-switch
+> value.
+>
+> **Amended again 2026-07-03 (ADR-0016).** The table below is the full
+> **Factor Scorecard** — every evaluation computes all rows; programmatic
+> roles (veto / rank / diagnostic) stay per ADR-0015's working hypothesis
+> and are finalized only after real-data scorecards (1.5+). Lineage labels:
+> **A** multi-lineage industry standard · **B** citable single lineage
+> (AFML) · **C** academic practice · **D** self-constructed (must not be
+> presented as industry). "IC / Rank IC" vocabulary is removed: the rank
+> form has no single-asset time-series pedigree (cross-sectional lineage);
+> the surviving magnitude diagnostic is the **time-series predictive
+> correlation** [D] plus bucket monotonicity (PLAN 2.5) [C].
+
+| # | Scorecard row (all on the Factor Return Stream, per symbol × horizon, OOS once 1.5 wires walk-forward) | Lineage |
 | --- | --- | --- |
-| Time-series IC / Rank IC (per symbol, on residual return) | cross-sectional Rank IC | pooled-over-symbols only as a secondary view |
-| Information Ratio of IC (mean IC / std IC) | single-factor Sharpe | the signal-quality number, free of sizing choices |
-| Autocorrelation-corrected t-stat (Newey-West / block bootstrap) | naive t-stat | overlapping forward returns are strongly autocorrelated |
-| Decay profile (IC vs horizon) | grid over horizons | read the natural horizon, don't optimize it |
-| Orthogonality / incremental IC (residual after base model + library) | — | the library-relative value; computed on return streams (§3.4) |
-| Per-window IC dispersion | — | regime-dependence as a *diagnostic*, not a filter |
-| Deflated significance (multiple-testing) | fixed Sharpe>0.8 bar | discount by candidate count from the Trial Registry (§3.5a) |
+| 1 | Gross stream Sharpe (annualized) — strength/ranking number, pre-cost | A |
+| 2 | Stream-mean t on the UTC-daily aggregated stream (= daily Sharpe significance; kill switch \|t\|>3 per ADR-0015; NW on X_d only if its ACF demands it) | form A, daily calibration D |
+| 3 | PSR; DSR once the Trial Registry (§3.5a) exists | B |
+| 4 | Bet count (flips/flattenings; event triggers) | A |
+| 5 | Gross edge per bet (bp) = gross PnL / bet count — breakeven-cost numerator, pre-cost | A |
+| 6 | Sub-period Sharpe table + sign counts across symbols × windows (replication, not cross-sectional; co-moving symbols ≈ 1 bet) | A |
+| 7 | Correlation to baseline streams + incremental alpha t (FWL intercept vs base model + library, §3.4) | A |
+| 8 | Conditional directional accuracy (hit rate conditioned on up/down + payoff ratio; HM/PT form, daily-blocked) | A |
+| 9 | Max drawdown, Calmar, time under water | A |
+| 10 | Skewness, kurtosis of the stream (PSR inputs) | A |
+| 11 | Return concentration, HHI form, positive/negative streams separately | concept A, HHI B |
+| 12 | Turnover / average holding period / signal half-life; lag sensitivity (entry +1/+2/+3 bars) | A / A− |
+| 13 | Market-exposure trio: corr to **own-symbol** buy-and-hold, alpha t after market control, ratio of longs (own-symbol only — BTC-as-index is a cross-asset input, V2 territory) | A |
+| + | Decay profile: row 1 swept over `V1_HORIZON_GRID` — read the natural horizon, don't optimize it | A |
+| opt | Time-series predictive correlation (Pearson/Spearman), score vs label — never named IC/Rank IC | D |
+
+Deliberate exclusions (recorded in ADR-0016): Campbell-Thompson OOS R²
+(frozen academic lineage, with bar-level NW); parameter-perturbation
+plateau checks (procedure-level, revisit at RC report design); cost /
+capacity / implementation shortfall (deployment layer).
 
 **Caveats.**
 - **t+1 execution.** A score from the bar-`t` close cannot be traded at the
@@ -270,15 +320,19 @@ is defined in exactly one place. The metrics are:
 - **Overlapping returns inflate significance.** With holding horizon `h`,
   adjacent forward returns share their window and are autocorrelated by
   construction. Effective independent sample ≈ span / h × n_symbols, far smaller
-  than row count. t-stats MUST be Newey-West or block-bootstrap corrected.
+  than row count. Handled by daily-block aggregation of the stream (ADR-0015);
+  bar-level Newey-West is frozen — even after NW correction the effective
+  sample at minute frequency stays large enough that "significant" is nearly
+  information-free, and NW's truncated kernel understates long-run variance
+  under long overlap (Hodrick-1992 critique).
 - **Walk-forward must purge + embargo.** Because labels span `h`, training
   samples whose label window overlaps the test period leak future information.
   Purge those samples and embargo a buffer around the train/test boundary
   (López de Prado). The current rolling split (ADR-0002/0003) does not do this
   and leaks at boundaries.
-- **Label is volatility-normalized.** Raw returns are heteroscedastic; IC on raw
-  returns is dominated by high-vol periods. Run IC against vol-normalized
-  forward returns.
+- **Label is volatility-normalized.** Raw returns are heteroscedastic; any
+  statistic on raw returns is dominated by high-vol periods. All scorecard
+  rows run against vol-normalized forward returns.
 - This engine produces evidence, not a decision. The decision is the Research
   Gate (§3.6).
 
@@ -307,25 +361,30 @@ count to deflate significance.
 **Goal.** A pure pass/fail predicate over the evaluation evidence, for library
 intake and mining feedback. It runs no simulation; it only reads §3.5 output.
 
-**Design philosophy.** Gate on IC evidence, not on a constructed strategy. The
+**Design philosophy.** Gate on scorecard evidence, not on a constructed strategy. The
 current `test_sharpe > 0.8` / `non_positive_oos_return` clauses are
 single-factor-strategy artifacts and must be removed — they conflate signal with
 an arbitrary trading construction. (Symmetry: the Trading Gate, §3.10, is the
 same shape — a predicate over a single engine's output.)
 
-**Pass conditions (target shape):**
+**Pass conditions (target shape, re-expressed per ADR-0015):**
 - No leakage (input-lookback audit passes, t+1 respected, walk-forward
   purged/embargoed).
 - Sufficient coverage.
-- IC sign stability across walk-forward test windows (keep the same-sign-rate
-  idea).
-- IC IR and **deflated** t-stat clear a bar set with multiple-testing in mind.
-- **Incremental** IC over the base model + existing library is non-trivial.
+- Daily-block kill-switch t on the OOS factor return stream clears |t|>3
+  (veto-only: passing is an entry ticket, never an endorsement or ranking).
+- Sign consistency of the stream mean across walk-forward test windows and
+  across symbols (validation universe may exceed the trading set).
+- **Deflated** significance clears a bar set with multiple-testing in mind
+  (DSR form once the Trial Registry exists).
+- **Incremental significance** over the base model + existing library is
+  non-trivial.
 
 **Caveats.**
-- Keep the financial-IC humility from ADR-0009: real IC is small; do not set a
-  high absolute IC cutoff that rewards overfitting. Stability + incrementality +
-  deflated significance matter more than raw magnitude.
+- Keep the financial-edge humility from ADR-0009: real single-signal edges are
+  small; do not set a high absolute stream-Sharpe cutoff that rewards
+  overfitting. Consistency + incrementality + deflated significance matter
+  more than raw magnitude.
 - The gate reads the Trial Registry count so deflation is honest.
 
 ---
@@ -351,9 +410,9 @@ return stream is ~collinear with an existing entry adds nothing and is rejected
 - Orthogonality is enforced **at intake**, which is *earlier* than where the
   deployment layer's diversification sits. Diversification later only works if
   the library was kept diverse here.
-- Entries must carry: residual-IC evidence, decay profile, return stream,
-  base-model version, data dependencies, and the candidate-count context for
-  deflation.
+- Entries must carry: the full scorecard (incl. incremental-significance
+  evidence and decay profile), return stream, base-model version, data
+  dependencies, and the candidate-count context for deflation.
 
 ---
 
@@ -393,7 +452,7 @@ conditions — this is *not* a regime filter and must not be confused with one.
   the optimizer's implicit cutoff; searching a quantile re-introduces
   overfitting.
 - **No explicit regime filter.** Regime-dependence is surfaced upstream as a
-  discovery diagnostic (per-window IC dispersion, §3.5); here it dissolves into
+  discovery diagnostic (per-window stream-Sharpe dispersion, §3.5); here it dissolves into
   risk sizing. An on/off regime switch is avoided because it shrinks the test
   window and needs a hard-to-define, leak-prone regime label.
 
@@ -486,9 +545,9 @@ mechanisms instead of round-by-round blind proposal.
 | Current | Action |
 | --- | --- |
 | `evaluation/grid.py` (grid search, selects best trial on train) | **Demote.** Strip parameter selection. Horizon becomes a decay profile, not a search; threshold/action removed. |
-| `evaluation/gates.py` (Sharpe>0.8 etc.) | **Rewrite** as a pure predicate: IC stability + incremental + deflated; drop strategy-Sharpe/return clauses. |
+| `evaluation/gates.py` (Sharpe>0.8 etc.) | **Rewrite** as a pure predicate (ADR-0015 shape): daily-block OOS kill-switch t + sign consistency + incremental + deflated; drop old strategy-Sharpe/return clauses. |
 | `evaluation/factor.py` | **Narrow** to score + input-lookback audit only; the forward-return target moves out to the engine. |
-| `evaluation/metrics.py` | **Add** autocorr-corrected t-stat, IC IR, decay, market-residualization, factor-return-stream helpers. |
+| `evaluation/metrics.py` | **Add** daily-block stream t (ADR-0015; bar-level NW retained as frozen primitive), stream-Sharpe decay, factor-return-stream helpers; market-residualization deferred to V2 (ADR-0014). |
 | `evaluation/base_model.py` | **New.** §3.4 (incl. small-N market proxy + return-stream definition). |
 | `evaluation/walk_forward.py` | **Fix** to purge + embargo around train/test boundaries. |
 | `evaluation/trial_registry.py` | **New.** §3.5a. |
@@ -504,11 +563,12 @@ mechanisms instead of round-by-round blind proposal.
 ## 5. Build sequence (dependency order)
 
 1. **Fix discovery correctness first** (blocks everything downstream):
-   t+1 execution + vol-normalized label, market neutralization against an
-   external proxy (needs a minimal Base Factor Model), autocorr-corrected
-   t-stats, and walk-forward purge+embargo.
+   t+1 execution + vol-normalized label (market neutralization deferred to V2,
+   ADR-0014), the Base Factor Model spanning benchmark, honest significance
+   (daily-block stream t per ADR-0015; bar-level autocorr-corrected t-stats
+   frozen), and walk-forward purge+embargo.
 2. **Define + store the factor return stream** (Base Factor Model) — prerequisite
-   for both orthogonality and incremental IC.
+   for both orthogonality and incremental significance.
 3. **Rewrite Research Gate** as a pure predicate; add the Trial Registry and
    multiple-testing deflation.
 4. **Harden library intake** with orthogonality on stored return streams.
@@ -535,6 +595,12 @@ correctness holds.
 
 ## 6. Impact on CONTEXT.md and ADRs (follow-up task)
 
+> **Status 2026-07-03: this pass has landed** (ADR-0012/0013 + CONTEXT.md
+> rewrite; further amended by ADR-0015/0016). Kept for the record; note the
+> vocabulary below has since evolved further — "time-series residual IC"
+> wording was itself retired by ADR-0016 (no IC vocabulary for single-asset
+> time-series evaluation; see the §3.5 scorecard).
+
 This design overturns controlled vocabulary and decisions and needs a separate
 documentation pass:
 
@@ -558,10 +624,11 @@ documentation pass:
     is a deployment diagnostic at most; it was a relic of the old entangled gate.
     (This also closes the long-standing "break_even_fee never implemented" gap by
     removing the expectation rather than building it.)
-  - Add: `Base Factor Model`, `Factor Return Stream`, `Incremental IC`,
-    `Market Neutralization`, `Deflated Significance`, `Trial Registry`,
-    `Purge/Embargo`.
+  - Add: `Base Factor Model`, `Factor Return Stream`, `Incremental Significance`
+    (renamed from `Incremental IC`, ADR-0015), `Market Neutralization`,
+    `Deflated Significance`, `Trial Registry`, `Purge/Embargo`.
 - **ADR-0001 / ADR-0009**: mark superseded by the new paradigm ADR.
 
-Until that pass lands, this file is the authoritative methodology reference.
+That pass has landed; this file and the ADRs (0012–0016) are jointly
+authoritative, with `CONTEXT.md` carrying the controlled vocabulary.
 
